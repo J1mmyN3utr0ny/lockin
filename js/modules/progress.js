@@ -92,7 +92,7 @@ export default {
       <div class="grid3" style="margin-bottom:6px">
         <div class="card tight stat"><div class="n" style="color:var(--gold)">${streak}🔥</div><div class="l">Day streak</div></div>
         <div class="card tight stat"><div class="n" style="color:var(--good)">${S.offDaysLeft()}</div><div class="l">Off-days left</div></div>
-        <div class="card tight stat"><div class="n">${dLeft >= 0 ? dLeft : 0}</div><div class="l">Days to Sep 6</div></div>
+        <div class="card tight stat"><div class="n">${dLeft >= 0 ? dLeft : 0}</div><div class="l">Days to Sep 30</div></div>
       </div>
 
       <div class="card tight">

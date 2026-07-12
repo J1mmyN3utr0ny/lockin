@@ -1,4 +1,4 @@
-// testmode.js — "Proving Grounds". After Sep 6 the app stops teaching and starts TESTING:
+// testmode.js — "Proving Grounds". After Sep 30 the app stops teaching and starts TESTING:
 // a skill report card, a GAMA-style rapid mixed exam, and from-scratch coding challenges.
 import * as S from "../state.js";
 import { esc, barHTML, refresh, toast, confetti, flashHTML, LEVELS, levelPct } from "../ui.js";
@@ -49,7 +49,7 @@ function renderReport(view) {
     <div class="card center" style="border-color:${passedAll ? "rgba(52,211,153,.5)" : "var(--line)"}">
       <div style="font-size:40px">${passedAll ? "🏆" : "🧪"}</div>
       <h2 style="margin:0">${passedAll ? "Summer targets: cleared." : "Prove what stuck."}</h2>
-      <p class="small muted">The app flipped to testing on Sep 6. No more teaching — just verification.</p>
+      <p class="small muted">The app flipped to testing on Sep 30. No more teaching — just verification.</p>
     </div>
 
     <div class="section-title">Target report card</div>

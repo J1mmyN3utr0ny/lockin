@@ -2,10 +2,12 @@
 
 export const KEY = "lockin.state.v1";
 export const PROGRAM_START = "2026-07-13"; // the whole program is anchored here (a Monday)
-export const SUMMER_END = "2026-09-06"; // skills should be acquired by here -> Test Mode
+export const SUMMER_END = "2026-09-30"; // extended: build through the capstone, then -> Test Mode
 export const COURSE_START = "2026-07-13"; // PET course runs Sun & Wed 09:00-14:00 (first one Wed Jul 15)
+export const EXAM_DATE = "2026-09-03"; // PET exam (Sep 2-3; anchored to the later day). Course ends here.
+export const PROJECT_START = "2026-09-05"; // the capstone kicks off 2 days after the exam
 export const WAKE_TARGET = "07:30";
-export const OFFDAY_TOKENS = 6;
+export const OFFDAY_TOKENS = 10; // more free days across the longer summer — room for a social life
 
 function todayISO() {
   const d = new Date();
@@ -133,7 +135,8 @@ export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"
 // Day template type for a given date.
 export function dayType(dateKey) {
   const d = dow(dateKey);
-  const courseLive = daysBetween(COURSE_START, dateKey) >= 0;
+  // The PET course runs Sun & Wed from COURSE_START until the exam; after that those days free up.
+  const courseLive = daysBetween(COURSE_START, dateKey) >= 0 && daysBetween(dateKey, EXAM_DATE) >= 0;
   if (d === 6) return "shabbat";
   if (d === 5) return "friday";
   if ((d === 0 || d === 3) && courseLive) return "course";

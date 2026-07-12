@@ -61,7 +61,7 @@ function renderTopbar() {
     ${streak > 0 ? `<span class="pill gold">🔥 ${streak}</span>` : ""}
     ${mode === "test"
       ? `<span class="pill accent">Proving Grounds</span>`
-      : `<span class="pill">${dLeft >= 0 ? dLeft + "d to Sep 6" : "summer over"}</span>`}
+      : `<span class="pill">${dLeft >= 0 ? dLeft + "d to Sep 30" : "summer over"}</span>`}
     <button class="btn sm ghost" id="gear" aria-label="settings">⚙</button>`;
   $("#gear").addEventListener("click", openSettings);
 }
@@ -100,7 +100,7 @@ function openSettings() {
     <div class="seg" style="display:flex; width:100%">
       ${["auto", "summer", "test"].map((v) => `<button data-mode="${v}" class="${s.settings.mode === v ? "on" : ""}" style="flex:1">${v}</button>`).join("")}
     </div>
-    <p class="small dim" style="margin-top:6px">Auto flips to <b>Proving Grounds</b> on Sep 6, 2026.</p>
+    <p class="small dim" style="margin-top:6px">Auto flips to <b>Proving Grounds</b> on Sep 30, 2026.</p>
 
     <hr class="hr" />
     <label class="field">🤖 AI tutor — Gemini 2.5 Flash key (free)</label>
@@ -216,7 +216,7 @@ function onboard() {
   if (s.settings.onboarded) return;
   const m = openModal(`
     <h2>Welcome — let's Lock In 🔒</h2>
-    <p class="muted small">One system for the whole summer: train, study, and learn — all the way to <b>Sep 6</b>.
+    <p class="muted small">One system for the whole summer: train, study, and learn — all the way to <b>Sep 30</b>.
     Answer two quick things and you're set.</p>
     <label class="field" style="margin-top:8px">What should I call you?</label>
     <input id="ob-name" placeholder="Your name" />

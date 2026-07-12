@@ -84,7 +84,9 @@ function deepWorkDay(dateKey, dow) {
     gymBlock("16:00", dow),
     travelBlock("homegym", "17:10", TRAVEL.gym, "Head home"),
     { id: "dinner", time: "17:45", cat: "food", title: "Dinner — biggest meal, ~45g protein", sub: "The meal that builds the physique.", link: L.food },
-    { id: "petpractice", time: "18:45", cat: "pet", title: `PET practice — ${petFocusFor(dateKey)}`, sub: "One focused set. Understand the path, not just the answer.", link: L.pet },
+    S.daysBetween(S.PROJECT_START, dateKey) >= 0
+      ? { id: "capstone", time: "18:45", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
+      : { id: "petpractice", time: "18:45", cat: "pet", title: `PET practice — ${petFocusFor(dateKey)}`, sub: "One focused set. Understand the path, not just the answer.", link: L.pet },
     { id: "free", time: "19:45", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
     { id: "wind", time: "22:45", cat: "wind", title: "Wind-down — screens dim, prep tomorrow", sub: "Lay out gym clothes, set breakfast.", link: L.sleep },
     { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "Protecting this is the whole reset.", link: L.sleep }

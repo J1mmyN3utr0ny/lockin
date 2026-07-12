@@ -53,7 +53,8 @@ export const resumeTips = {
 export const tiers = [
   { id: "t1", name: "Foundations", sub: "Build fluency from a blank file" },
   { id: "t2", name: "Security & systems", sub: "Tools a blue team would actually run" },
-  { id: "t3", name: "Depth & polish", sub: "Show you understand what's under the framework" }
+  { id: "t3", name: "Depth & polish", sub: "Show you understand what's under the framework" },
+  { id: "t4", name: "Capstone — after the PET exam (Sep 5 →)", sub: "Everything you've built, integrated into one flagship tool" }
 ];
 
 export const projects = [
@@ -365,6 +366,59 @@ export const projects = [
     ],
     proveIt: "From memory, explain how a cmp/je pair implements an if, and point to where the stack frame is set up (the push ebp / mov ebp, esp prologue).",
     stretch: "Solve a real beginner crackme from crackmes.one and add its write-up as a second entry in the same repo."
+  },
+  {
+    id: "sentinel", tier: "t4", name: "Sentinel — Network Intrusion Detection System", icon: "🚨",
+    startsNote: "Kicks off Sep 5 — 2 days after the PET exam, when your schedule opens up.",
+    tagline: "Sniff live traffic and raise real-time alerts on port scans, SYN floods and other attacks.",
+    stack: ["Python", "raw sockets", "struct", "threading", "CustomTkinter"],
+    skills: ["cyber_low", "cyber_high", "python"],
+    why: "The capstone that ties your whole summer together. It reuses your sniffer to READ packets, stacks a detection engine on top, and presents it like a real product. A working IDS is the single strongest artifact on a security résumé — it proves you understand offense AND defense, and every other project you built feeds into it.",
+    realUse: "This is a miniature Snort/Suricata — the intrusion-detection systems that sit on real networks watching for attacks. Run it on your own LAN, then point your Tier-1 port scanner at the machine and watch Sentinel light up. That demo — one tool you built catching another tool you built — is the kind of thing that ends an interview in your favour.",
+    resumeBullet: "Built Sentinel, a real-time network intrusion-detection system in Python: it decodes raw IP/TCP packets, detects port scans and SYN floods with a sliding-window rule engine, and streams severity-ranked alerts to a live GUI dashboard.",
+    stages: [
+      { name: "1 · Capture & decode",
+        goal: "Reuse your sniffer to pull (source IP, dest port, TCP flags) off every packet.",
+        dq: ["Which socket type gives you raw frames, and which module unpacks the header bytes?",
+             "Inside the TCP header, where do the SYN and ACK flags live?",
+             "What three fields does a detector actually need out of each packet?"],
+        hints: ["A raw socket + struct.unpack on the IP and TCP headers — exactly your Tier-1 sniffer.",
+                "The flags are a single byte; SYN and ACK are individual bits you mask out.",
+                "OUTLINE: for each packet, emit a small record {src_ip, dst_port, is_syn, is_ack} and feed it to the engine."] },
+      { name: "2 · The rule engine",
+        goal: "Detect a port scan and a SYN flood from the packet stream.",
+        dq: ["What does a port scan look like in the data (one source → many DISTINCT ports, fast)?",
+             "How is a SYN flood different (many SYNs, few completed handshakes)?",
+             "Why do you need a TIME WINDOW, not just a raw count?"],
+        hints: ["Keep a per-source set of ports seen in the last N seconds; scan = the set crosses a threshold.",
+                "Count SYNs vs ACKs per source; a flood is lots of SYN with almost no matching ACK.",
+                "OUTLINE: a sliding window (timestamps you expire) makes '20 ports in 5 seconds' expressible."] },
+      { name: "3 · Alerts & state",
+        goal: "Turn detections into clean, ranked, de-duplicated alerts.",
+        dq: ["How do you avoid firing 1,000 identical alerts for one ongoing scan?",
+             "How do you rank severity (info vs critical)?",
+             "What does an alert need to be useful later (time, source, rule, evidence)?"],
+        hints: ["Dedupe by (source, rule) with a cooldown; only re-alert after it expires.",
+                "Severity from how far over the threshold it went, or which rule fired.",
+                "OUTLINE: an Alert dataclass; a dict of active alerts keyed by (src, rule); append to a log file too."] },
+      { name: "4 · Live dashboard + config",
+        goal: "Show alerts live without freezing capture, and make rules editable without code.",
+        dq: ["If capture and the GUI share one thread, what happens — and how do you fix it?",
+             "How does the GUI get new alerts without blocking?",
+             "How do you let someone tune thresholds without editing Python?"],
+        hints: ["Capture on a background thread; push alerts onto a queue the GUI polls on a timer.",
+                "A thread-safe queue.Queue decouples the sniffer from the CustomTkinter window.",
+                "OUTLINE: load thresholds/rules from a config.json so a non-coder can tune sensitivity."] }
+    ],
+    ship: [
+      "Git repo — first commit is the working capture→detect→alert pipeline.",
+      "README with the money demo: run Sentinel, scan yourself with your Tier-1 scanner, screenshot the alert.",
+      "Ship the config.json and a sample alerts.log so the behaviour is reproducible.",
+      "Run it as root/admin note + a clean Ctrl-C shutdown (threads join, socket closes).",
+      "One stretch shipped (see below)."
+    ],
+    proveIt: "Delete the detection module. From a blank file, rebuild the port-scan detector (per-source sliding-window of distinct ports + threshold) in under 25 minutes, no reference.",
+    stretch: "Add an ARP-spoofing rule, replay a captured .pcap through the engine for testing, or fire a desktop/email notification on a critical alert."
   }
 ];
 
