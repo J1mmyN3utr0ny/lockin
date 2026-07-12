@@ -5,6 +5,7 @@ import { tracks, trackById } from "../data/skill_tracks.js";
 import { decks, deckList } from "../data/cyber_decks.js";
 import { stages, yourEdge } from "../data/gama_notes.js";
 import { gitIntro, lessons } from "../data/git_lessons.js";
+import { reading, READ_ICON } from "../data/reading.js";
 import { cardRec, grade, deckStats, dueQueue } from "../srs.js";
 import * as Lab from "../lab.js";
 
@@ -99,6 +100,12 @@ function renderTracks(view) {
           }).join("")}</div>
           <div class="section-title" style="margin-top:10px">Resources</div>
           <ul class="list-plain small muted">${t.resources.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+          ${(reading[t.id] || []).length ? `
+            <div class="section-title" style="margin-top:10px">📚 Further reading</div>
+            <ul class="list-plain small muted">${reading[t.id].map((r) => `<li>${READ_ICON[r.type] || "📄"} ${r.url
+              ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(r.title)}</a>`
+              : `<b>${esc(r.title)}</b>`}${r.note ? ` — ${esc(r.note)}` : ""}</li>`).join("")}</ul>
+          ` : ""}
         ` : ""}
       </div>`;
   }).join("");

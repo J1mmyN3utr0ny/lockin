@@ -6,28 +6,23 @@ import { weekPlan, dayById } from "./data/workout_program.js";
 import { tracks } from "./data/skill_tracks.js";
 import { sections as mathSections } from "./data/math_checklist.js";
 
-// ---- sleep taper -----------------------------------------------------------
-// He currently wakes ~17:00. We walk wake-time earlier ~75 min/day to a 07:30 anchor.
-const START_WAKE = 17 * 60;      // 17:00 in minutes
+// ---- sleep target ----------------------------------------------------------
+// Instant fix: hold the 07:30 wake / 23:30 sleep anchor from day one — no gradual walk-back.
 const TARGET_WAKE = 7 * 60 + 30; // 07:30
-const SHIFT = 75;                // minutes earlier per day
 
 function toHHMM(mins) {
   mins = ((mins % 1440) + 1440) % 1440;
   return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 }
 
-// Days since the program start (Jul 12). Everything is anchored here, not the first-run day.
+// Days since the program start. Everything is anchored here, not the first-run day.
 function programDay(dateKey) {
   return Math.max(0, S.daysBetween(S.PROGRAM_START, dateKey));
 }
 
 export function taperTargets(dateKey) {
-  const i = programDay(dateKey);
-  const wake = Math.max(TARGET_WAKE, START_WAKE - i * SHIFT);
-  const inReset = wake > TARGET_WAKE;
-  const bed = wake + (23 * 60 + 30) - TARGET_WAKE; // keep ~8h; bed walks earlier with wake
-  return { wake: toHHMM(wake), sleep: toHHMM(Math.min(bed, 24 * 60 + 30)), inReset, dayIndex: i };
+  // No taper — the target is a 07:30 wake and 23:30 sleep every day, starting immediately.
+  return { wake: toHHMM(TARGET_WAKE), sleep: "23:30", inReset: false, dayIndex: programDay(dateKey) };
 }
 
 // ---- rotations (anchored to Jul 12) ----------------------------------------

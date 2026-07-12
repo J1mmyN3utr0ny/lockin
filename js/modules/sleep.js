@@ -26,9 +26,7 @@ export default {
           <div class="stat"><div class="n" style="color:#22d3ee">${t.wake}</div><div class="l">Wake by</div></div>
         </div>
         <p class="small muted" style="margin-top:10px">
-          ${t.inReset
-            ? `You're in the reset window (day ${t.dayIndex + 1}). Each day the target walks ~75 min earlier until you're at <b>07:30</b> — in time for the 9:00 course.`
-            : `You're at the 07:30 anchor. Hold it — consistency is what makes it stick.`}
+          The target is <b>07:30 wake</b> / <b>23:30 sleep</b> from day one — no easing in. Set the alarm across the room, get daylight within 10 minutes, and hold it. Consistency is what makes it stick.
         </p>
       </div>
 
@@ -49,9 +47,9 @@ export default {
       <div class="card">
         <div class="section-title">Why this matters</div>
         <ul class="list-plain small muted">
-          <li>Your 4–7am → 5–6pm cycle is the single biggest drag on training, appetite and focus right now.</li>
-          <li>Fixing wake-time (not bedtime) is the lever — get morning light within 10 min of waking.</li>
-          <li>No screens in the wind-down block; it's already built into your Today schedule.</li>
+          <li>A late, drifting sleep cycle is the single biggest drag on training, appetite and focus — so this snaps to 07:30 now, not gradually.</li>
+          <li>Fixing wake-time (not bedtime) is the lever — get morning light within 10 min of waking, even on a rough night.</li>
+          <li>The first few days are the hardest; push through and it locks in. No screens in the wind-down block — it's already in your Today schedule.</li>
         </ul>
       </div>`;
 
