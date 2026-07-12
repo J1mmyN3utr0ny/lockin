@@ -1,6 +1,6 @@
 // today.js — the day's routine as checkable timeblocks. Free time is protected.
 import * as S from "../state.js";
-import { esc, barHTML, refresh, toast, confetti, buzz } from "../ui.js";
+import { esc, barHTML, refresh, toast, confetti, buzz, openModal } from "../ui.js";
 import { buildDay, taskBlockIds } from "../schedule.js";
 import { openOffDayFlow, isOffDay } from "./offday.js";
 import { startFocus } from "../focus.js";
@@ -11,7 +11,7 @@ const CAT = {
   cyber: { emoji: "🛡️", color: "#34d399" }, pet: { emoji: "📝", color: "#f472b6" },
   gym: { emoji: "🏋️", color: "#fb7185" }, free: { emoji: "✨", color: "#f5c451" },
   wind: { emoji: "🌆", color: "#94a3b8" }, leet: { emoji: "🧩", color: "#a78bfa" },
-  review: { emoji: "📋", color: "#22d3ee" }
+  review: { emoji: "📋", color: "#22d3ee" }, travel: { emoji: "🚗", color: "#94a3b8" }
 };
 
 function toggle(dateKey, id, taskIds) {
@@ -78,13 +78,45 @@ function weekStrip(todayKey) {
     const isToday = k === todayKey;
     const isFuture = S.daysBetween(todayKey, k) > 0;
     const st = dayStatus(k);
-    html += `<div class="wd ${isToday ? "today" : ""} ${isFuture ? "future" : ""} ${st}">
+    html += `<div class="wd ${isToday ? "today" : ""} ${isFuture ? "future" : ""} ${st}" data-day="${k}" style="cursor:pointer">
       <div class="d">${S.DAY_NAMES[i].slice(0, 3)}</div>
       <div class="n">${Number(k.slice(8))}</div>
       <div class="dot"></div>
     </div>`;
   }
   return html + `</div>`;
+}
+
+// The summer runs from the program start to the Sep-6 deadline. Preview any day's plan in a modal,
+// paging through the whole stretch with ‹ ›.
+const SUMMER_END = "2026-09-06";
+function previewDay(dateKey) {
+  const d = buildDay(dateKey);
+  const canPrev = S.daysBetween(S.PROGRAM_START, dateKey) > 0;
+  const canNext = S.daysBetween(dateKey, SUMMER_END) > 0;
+  const rows = d.blocks.map((b) => {
+    const c = CAT[b.cat] || CAT.free;
+    return `
+      <div class="row" style="gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px solid var(--line)">
+        <div style="width:4px; align-self:stretch; border-radius:3px; background:${c.color}; flex:none"></div>
+        <div class="time" style="min-width:46px; color:var(--accent-2); font-weight:800; font-size:13px">${esc(b.time)}</div>
+        <div style="flex:1; min-width:0">
+          <div style="font-weight:700; font-size:13.5px">${esc(b.title)}</div>
+          ${b.sub ? `<div class="small muted">${esc(b.sub)}</div>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+  const m = openModal(`
+    <div class="row between" style="margin-bottom:8px">
+      <button class="btn sm ghost" id="pv-prev" ${canPrev ? "" : "disabled"}>‹</button>
+      <div class="center"><b>${esc(S.prettyDate(dateKey))}</b>
+        <div style="margin-top:2px"><span class="tag">${esc(d.label)}</span></div></div>
+      <button class="btn sm ghost" id="pv-next" ${canNext ? "" : "disabled"}>›</button>
+    </div>
+    <div style="max-height:58vh; overflow:auto">${rows}</div>
+    <button class="btn block" data-close style="margin-top:12px">Close</button>`);
+  if (canPrev) m.querySelector("#pv-prev").addEventListener("click", () => previewDay(S.addDays(dateKey, -1)));
+  if (canNext) m.querySelector("#pv-next").addEventListener("click", () => previewDay(S.addDays(dateKey, 1)));
 }
 
 export default {
@@ -133,6 +165,10 @@ export default {
         <div class="ring" style="--p:${Math.round(pct)}; position:relative"><span>${doneCount}/${taskIds.length}</span></div>
       </div>
       ${weekStrip(key)}
+      <div class="row between" style="margin:-2px 2px 10px">
+        <span class="small dim">Tap any day to see its plan</span>
+        <button class="btn sm ghost" id="preview-day">📅 Preview any day</button>
+      </div>
       ${resetBanner}
       <div style="margin:6px 2px 12px">${barHTML(pct)}</div>
       <div id="blocks"></div>
@@ -187,5 +223,8 @@ export default {
         });
       }));
     view.querySelector("#take-off").addEventListener("click", () => openOffDayFlow(key));
+    view.querySelectorAll("[data-day]").forEach((el) =>
+      el.addEventListener("click", () => previewDay(el.dataset.day)));
+    view.querySelector("#preview-day").addEventListener("click", () => previewDay(key));
   }
 };
