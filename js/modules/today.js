@@ -87,13 +87,11 @@ function weekStrip(todayKey) {
   return html + `</div>`;
 }
 
-// The summer runs from the program start to the Sep-6 deadline. Preview any day's plan in a modal,
-// paging through the whole stretch with ‹ ›.
-const SUMMER_END = "2026-09-06";
+// Preview any day's plan in a modal, paging the whole summer (program start → Sep-6 deadline).
 function previewDay(dateKey) {
   const d = buildDay(dateKey);
   const canPrev = S.daysBetween(S.PROGRAM_START, dateKey) > 0;
-  const canNext = S.daysBetween(dateKey, SUMMER_END) > 0;
+  const canNext = S.daysBetween(dateKey, S.SUMMER_END) > 0;
   const rows = d.blocks.map((b) => {
     const c = CAT[b.cat] || CAT.free;
     return `

@@ -1,9 +1,9 @@
 // state.js — single source of truth, persisted to localStorage, with date helpers.
 
 export const KEY = "lockin.state.v1";
-export const PROGRAM_START = "2026-07-12"; // the whole program is anchored here (a Sunday)
+export const PROGRAM_START = "2026-07-13"; // the whole program is anchored here (a Monday)
 export const SUMMER_END = "2026-09-06"; // skills should be acquired by here -> Test Mode
-export const COURSE_START = "2026-07-12"; // PET course begins (Sun & Wed 09:00-14:00)
+export const COURSE_START = "2026-07-13"; // PET course runs Sun & Wed 09:00-14:00 (first one Wed Jul 15)
 export const WAKE_TARGET = "07:30";
 export const OFFDAY_TOKENS = 6;
 

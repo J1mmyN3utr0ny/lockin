@@ -109,8 +109,9 @@ function courseDay(dateKey, dow) {
     { id: "leet", time: "16:20", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
     { id: "light", time: "17:00", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
     { id: "dinner", time: "18:15", cat: "food", title: "Dinner — ~45g protein", sub: "", link: L.food },
-    { id: "review", time: "19:00", cat: "pet", title: "Review course notes + vocab", sub: "Lock in today's course material while it's fresh.", link: L.pet },
-    { id: "free", time: "19:45", cat: "free", free: true, title: "FREE TIME — protected", sub: "Recover. Big day done." },
+    { id: "homework", time: "19:00", cat: "pet", title: "PET homework — from today's class", sub: "Do it while it's fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
+    { id: "review", time: "19:45", cat: "pet", title: "Review notes + vocab", sub: "Lock in today's course material.", link: L.pet },
+    { id: "free", time: "20:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Recover. Big day done." },
     { id: "wind", time: "22:45", cat: "wind", title: "Wind-down", sub: "Prep for tomorrow.", link: L.sleep },
     { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "", link: L.sleep }
   ];
