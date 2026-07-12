@@ -1,0 +1,24 @@
+# Runtime state — personal progress, and can hold your Gemini API key. NEVER publish this.
+Lab/lab_state.json
+
+# Personal / school material — kept local, NEVER published to the public repo.
+Prev projects/
+CS assignment/
+Math assignment/
+Gama/
+Cyber-Knowledge/
+PTE/
+
+# Local dev config (not needed for the app)
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS / editor junk
+Thumbs.db
+.DS_Store
+desktop.ini
+*.swp

@@ -1,0 +1,148 @@
+# runner.py — executes the user's code safely-ish (their own machine, their own code) with a
+# timeout, and runs LeetCode/DSA exercises against their test cases. Python always; C if gcc exists.
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+PY = sys.executable or "python"
+TIMEOUT = 8  # seconds
+
+
+def have_gcc():
+    return shutil.which("gcc") is not None
+
+
+def _run(cmd, cwd, timeout=TIMEOUT, stdin=""):
+    try:
+        p = subprocess.run(cmd, cwd=cwd, input=stdin, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+        return {"stdout": p.stdout, "stderr": p.stderr, "exit": p.returncode, "timed_out": False}
+    except subprocess.TimeoutExpired as e:
+        return {"stdout": e.stdout or "", "stderr": (e.stderr or "") +
+                "\n[stopped after %ss — likely an infinite loop]" % timeout, "exit": -1, "timed_out": True}
+    except Exception as e:
+        return {"stdout": "", "stderr": "runner error: %r" % e, "exit": -1, "timed_out": False}
+
+
+def run_python(code, stdin=""):
+    """Run free-form Python and capture output."""
+    d = tempfile.mkdtemp(prefix="lockin_")
+    try:
+        path = os.path.join(d, "main.py")
+        open(path, "w", encoding="utf-8").write(code)
+        return _run([PY, "-I", path], d, stdin=stdin)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def run_c(code, stdin=""):
+    """Compile with gcc then run. Returns compile errors if any."""
+    if not have_gcc():
+        return {"stdout": "", "stderr": "gcc not found — install it (or use WSL) to run C here.\n"
+                "The lesson still works: build & run C in your own terminal.", "exit": -1, "timed_out": False}
+    d = tempfile.mkdtemp(prefix="lockin_")
+    try:
+        src = os.path.join(d, "main.c")
+        out = os.path.join(d, "a.exe" if os.name == "nt" else "a.out")
+        open(src, "w", encoding="utf-8").write(code)
+        comp = _run(["gcc", src, "-o", out, "-std=c11", "-Wall"], d, timeout=20)
+        if comp["exit"] != 0:
+            return {"stdout": "", "stderr": "compile error:\n" + comp["stderr"], "exit": comp["exit"], "timed_out": False}
+        res = _run([out], d, stdin=stdin)
+        if comp["stderr"].strip():
+            res["stderr"] = "warnings:\n" + comp["stderr"] + "\n" + res["stderr"]
+        return res
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+# Harness driver: defines a comparator, runs the user's function against each case, prints results.
+_DRIVER = r'''
+import json, sys, copy
+def __cmp(a, b, mode):
+    try:
+        if mode == "unordered": return sorted(a) == sorted(b)
+        if mode == "groups":
+            norm = lambda g: sorted(sorted(x) for x in g)
+            return norm(a) == norm(b)
+        if mode == "intervals":
+            return sorted([list(x) for x in a]) == sorted([list(x) for x in b])
+        if mode == "approx": return abs(a - b) < 1e-6
+        return a == b
+    except Exception:
+        return False
+
+# ===================== USER CODE =====================
+%(user)s
+# =================== END USER CODE ===================
+
+__tests = json.loads(r"""%(tests)s""")
+__mode = %(mode)r
+__fn = globals().get(%(func)r)
+__out = []
+if __fn is None:
+    for __t in __tests:
+        __out.append({"ok": False, "err": "no function named %(func)s defined"})
+else:
+    for __t in __tests:
+        try:
+            __args = copy.deepcopy(__t["args"])
+            __g = __fn(*__args)
+            __ok = bool(__cmp(__g, __t["expect"], __mode))
+            __out.append({"ok": __ok, "got": repr(__g)})
+        except Exception as __e:
+            __out.append({"ok": False, "err": repr(__e)})
+sys.stdout.write("\n__LOCKIN_RESULTS__" + json.dumps(__out))
+'''
+
+MARKER = "__LOCKIN_RESULTS__"
+
+
+def run_tests(user_code, exercise):
+    """Run user_code against exercise['tests']. Returns {cases:[...], passed, total, user_output, error}."""
+    tests = exercise["tests"]
+    driver = _DRIVER % {
+        "user": user_code,
+        "tests": json.dumps(tests),
+        "mode": exercise.get("compare", "exact"),
+        "func": exercise["func"],
+    }
+    d = tempfile.mkdtemp(prefix="lockin_")
+    try:
+        path = os.path.join(d, "harness.py")
+        open(path, "w", encoding="utf-8").write(driver)
+        res = _run([PY, "-I", path], d)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+    raw = res["stdout"]
+    idx = raw.rfind(MARKER)
+    if idx == -1:
+        # crashed before finishing (syntax error, timeout, etc.)
+        err = res["stderr"] or "no output"
+        if res["timed_out"]:
+            err = "timed out — likely an infinite loop."
+        return {"cases": [], "passed": 0, "total": len(tests), "user_output": raw,
+                "error": err.strip()}
+    user_output = raw[:idx].rstrip("\n")
+    try:
+        results = json.loads(raw[idx + len(MARKER):])
+    except Exception:
+        return {"cases": [], "passed": 0, "total": len(tests), "user_output": user_output,
+                "error": "could not parse test results"}
+    cases = []
+    passed = 0
+    for t, r in zip(tests, results):
+        ok = bool(r.get("ok"))
+        passed += 1 if ok else 0
+        cases.append({
+            "ok": ok,
+            "args": t["args"],
+            "expect": t["expect"],
+            "got": r.get("got", r.get("err", "—")),
+        })
+    return {"cases": cases, "passed": passed, "total": len(tests),
+            "user_output": user_output, "error": None}

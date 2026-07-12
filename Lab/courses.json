@@ -1,0 +1,1208 @@
+{
+  "python": {
+    "trackId": "python",
+    "title": "Python — from reader to builder",
+    "intro": "You can read Python. This course trains the missing muscle: writing it from an empty file, and owning the standard library you keep forgetting.",
+    "whatToLearn": [
+      "Structure a program from scratch (functions, a main guard, modules).",
+      "OOP the way GAMA tests it: classes, abstract base classes, interfaces via ABC, dunder methods.",
+      "The stdlib that powers your CS project: socket, threading, json, sqlite3, hashlib.",
+      "Generators, comprehensions and context managers — the 'Pythonic' tools."
+    ],
+    "lessons": [
+      {
+        "id": "py-1",
+        "title": "Building from a blank file",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "Why starting is hard",
+            "p": "Reading code shows the finished shape. Writing it means deciding that shape yourself. The cure is a repeatable skeleton you always start from — then you fill it in."
+          },
+          {
+            "h": "The skeleton",
+            "p": "Almost every script you write starts like this: imports at the top, functions in the middle, and one entry point at the bottom guarded so the file can also be imported without running.",
+            "code": "import sys\n\ndef greet(name):\n    return f\"Hello, {name}\"\n\ndef main():\n    print(greet(\"world\"))\n\nif __name__ == \"__main__\":\n    main()"
+          },
+          {
+            "h": "The main guard",
+            "p": "`if __name__ == \"__main__\":` means 'only run this when the file is executed directly, not when it's imported'. It's how you keep reusable functions and a runnable program in the same file — you'll need it constantly."
+          },
+          {
+            "h": "Decompose before you type",
+            "p": "Before writing code, list the steps in plain words as function names: read_input(), validate(), compute(), print_result(). Now each is a small, obvious function. Starting is just filling in one tiny function at a time."
+          }
+        ],
+        "doThis": {
+          "task": "From a BLANK file (no AI, no copying), write a command-line program `stats.py` that asks the user for numbers (one per line, blank line to stop) and prints their count, sum, average, min and max. Use at least three of your own functions and a main guard. Run it in a real terminal.",
+          "aiRubric": "A blank-file CLI that reads numbers until a blank line and prints count/sum/avg/min/max, decomposed into ≥3 functions with a proper __main__ guard, handling the empty-input case."
+        },
+        "quiz": [
+          {
+            "q": "What does the __main__ guard let you do?",
+            "options": [
+              "Run faster",
+              "Import the file's functions without executing the program",
+              "Hide code",
+              "Create a class"
+            ],
+            "answer": 1,
+            "why": "Code under the guard only runs on direct execution, so the file is also safely importable."
+          },
+          {
+            "q": "Best first move when starting a project from nothing?",
+            "options": [
+              "Write all the code, then split it",
+              "List the steps as function names, fill one at a time",
+              "Copy a similar project",
+              "Design the GUI"
+            ],
+            "answer": 1,
+            "why": "Decomposition turns a scary blank file into a list of tiny, obvious functions."
+          }
+        ]
+      },
+      {
+        "id": "py-2",
+        "title": "OOP the way GAMA asks it",
+        "minutes": 30,
+        "read": [
+          {
+            "h": "A class is a blueprint",
+            "p": "It bundles data (attributes) with behavior (methods). `__init__` is the constructor that sets up a new instance's data.",
+            "code": "class Car:\n    def __init__(self, plate, hp):\n        self.plate = plate\n        self.hp = hp\n    def describe(self):\n        return f\"{self.plate}: {self.hp} hp\""
+          },
+          {
+            "h": "Abstract base classes & interfaces",
+            "p": "GAMA literally asks 'what is an abstract class vs an interface?'. In Python both come from the `abc` module: mark a class ABC and decorate methods with @abstractmethod — subclasses MUST implement them or they can't be instantiated.",
+            "code": "from abc import ABC, abstractmethod\n\nclass Shape(ABC):\n    @abstractmethod\n    def area(self):\n        ...\n\nclass Circle(Shape):\n    def __init__(self, r): self.r = r\n    def area(self): return 3.14159 * self.r ** 2"
+          },
+          {
+            "h": "Dunder methods",
+            "p": "Double-underscore methods hook into language operators: `__str__` for print(), `__eq__` for ==, `__len__` for len(). They're how your objects feel built-in."
+          },
+          {
+            "h": "The four pillars",
+            "p": "Encapsulation (bundle + hide internals), Inheritance (reuse via subclassing), Polymorphism (same call, different behavior per type), Abstraction (program to an interface, not a concrete class). Be able to define each in one sentence — GAMA asks."
+          }
+        ],
+        "doThis": {
+          "task": "Model a tiny zoo: an abstract base class `Animal` with an abstract `speak()`, and 3 subclasses (Dog, Cat, Cow) that implement it. Add `__str__`. Then make a list of mixed animals and loop calling speak() on each — that loop is polymorphism. Prove an Animal() can't be instantiated directly.",
+          "aiRubric": "An ABC Animal with @abstractmethod speak(), 3 concrete subclasses, a __str__, a polymorphic loop over mixed types, and a demonstration that instantiating the ABC raises TypeError."
+        },
+        "quiz": [
+          {
+            "q": "A subclass of an ABC that doesn't implement an @abstractmethod…",
+            "options": [
+              "Runs fine",
+              "Can't be instantiated",
+              "Becomes abstract too and can't be instantiated",
+              "Ignores it"
+            ],
+            "answer": 2,
+            "why": "It's still abstract until every abstract method is implemented — instantiating it raises TypeError."
+          },
+          {
+            "q": "Polymorphism is…",
+            "options": [
+              "Many constructors",
+              "Same call, behavior depends on the object's type",
+              "Hiding data",
+              "Copying a class"
+            ],
+            "answer": 1,
+            "why": "One interface (speak()), many implementations chosen by the runtime type."
+          }
+        ]
+      },
+      {
+        "id": "py-3",
+        "title": "The stdlib you keep forgetting",
+        "minutes": 30,
+        "read": [
+          {
+            "h": "Don't memorize — map",
+            "p": "You don't need every function in your head; you need to know WHICH module does what and its 3-4 core calls. Here's the map for your CS project."
+          },
+          {
+            "h": "socket, threading, json",
+            "p": "socket = raw TCP/UDP (bind/listen/accept/connect/send/recv). threading = run a handler per client (Thread(target=...).start(), Lock for shared state). json = dumps(obj)→str, loads(str)→obj for your protocol."
+          },
+          {
+            "h": "sqlite3 & hashlib",
+            "p": "sqlite3: connect('x.db') → cursor → execute(sql, params) → commit. ALWAYS parameterize with ? (never f-strings) to avoid SQL injection. hashlib: sha256(b'..').hexdigest() to store password hashes, never plaintext.",
+            "code": "import sqlite3\ncon = sqlite3.connect(\"app.db\")\ncon.execute(\"CREATE TABLE IF NOT EXISTS users(name TEXT UNIQUE, pw TEXT)\")\ncon.execute(\"INSERT INTO users VALUES(?, ?)\", (name, pw_hash))\ncon.commit()"
+          }
+        ],
+        "doThis": {
+          "task": "Write `notes.py`: a tiny SQLite-backed note keeper. Commands: add <text>, list, delete <id>. Persist to notes.db across runs. Use parameterized queries only. No ORM, no AI — just the sqlite3 module and the docs.",
+          "aiRubric": "A CLI using sqlite3 with a table, add/list/delete backed by parameterized queries (?), data persisting across runs, and no f-string SQL."
+        }
+      },
+      {
+        "id": "py-4",
+        "title": "Generators & context managers",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Generators = lazy sequences",
+            "p": "A function with `yield` produces values one at a time, on demand, without building a giant list in memory. Perfect for streaming a file or an endless counter.",
+            "code": "def first_n_squares(n):\n    for i in range(n):\n        yield i * i\n\nfor sq in first_n_squares(5):\n    print(sq)  # 0 1 4 9 16, never a full list in memory"
+          },
+          {
+            "h": "Context managers",
+            "p": "`with open(f) as fh:` guarantees cleanup (the file closes) even if an error happens. You can write your own with a class that defines __enter__ and __exit__ — how you'd manage a socket or DB connection safely."
+          }
+        ],
+        "doThis": {
+          "task": "Write a generator `read_big(path)` that yields a file one line at a time (stripped), and use it to count how many lines contain a word the user passes — WITHOUT reading the whole file into a list. Test it on any large text file.",
+          "aiRubric": "A generator using yield to stream lines lazily (not readlines()), consumed in a loop to count matches, demonstrating memory-lazy iteration."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: a from-scratch CLI tool",
+      "goal": "Combine everything: build a small but complete command-line app from an empty file, using classes, the stdlib, and clean decomposition.",
+      "milestones": [
+        {
+          "id": "pyc1",
+          "text": "Pick a real tool: a habit tracker, a password vault (hashed!), or a mini todo — decide the commands first.",
+          "hint": "Write the command list and data shape before any code."
+        },
+        {
+          "id": "pyc2",
+          "text": "Model the data as a class, persist it with sqlite3 or json.",
+          "hint": "One class for the item, one for the store."
+        },
+        {
+          "id": "pyc3",
+          "text": "Build the command loop with argparse or a simple menu; each command is one function.",
+          "hint": "Keep the loop dumb; push logic into functions."
+        },
+        {
+          "id": "pyc4",
+          "text": "Add error handling for bad input, and a --help. Ship it and demo to yourself.",
+          "hint": "Try every wrong input you can think of."
+        }
+      ]
+    }
+  },
+  "csharp": {
+    "trackId": "csharp",
+    "title": "C# — leverage your Java",
+    "intro": "GAMA recommends C# for the OOP workshop. You know Java, so 80% transfers — this course maps your Java habits onto C# idioms and drills the extendable-OOP style GAMA grades.",
+    "whatToLearn": [
+      "Java→C# differences: properties, namespaces, var, string interpolation.",
+      "Collections + LINQ (the querying superpower Java lacks by default).",
+      "Interfaces vs abstract classes, and destructors/IDisposable (GAMA asks!).",
+      "Delegates/events and async/await."
+    ],
+    "lessons": [
+      {
+        "id": "cs-1",
+        "title": "Java → C# in one sitting",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "It's 80% the same",
+            "p": "Classes, types, if/for/while, exceptions — nearly identical. Focus your energy on the deltas below."
+          },
+          {
+            "h": "Properties instead of getters/setters",
+            "p": "Where Java writes getName()/setName(), C# has properties — cleaner syntax, same idea.",
+            "code": "public class Person {\n    public string Name { get; set; }   // auto-property\n    public int Age { get; private set; }\n}\n// usage: p.Name = \"Dan\";  Console.WriteLine(p.Name);"
+          },
+          {
+            "h": "Namespaces, var, interpolation",
+            "p": "Java packages → C# namespaces (`namespace App { }`, `using System;`). `var x = 5;` infers type. String interpolation uses $: `$\"Hello {name}\"`. Entry point: `static void Main()`."
+          },
+          {
+            "h": "Console basics",
+            "p": "Console.WriteLine(...) to print, Console.ReadLine() to read a line. Compile+run with the dotnet CLI: `dotnet new console`, `dotnet run`."
+          }
+        ],
+        "doThis": {
+          "task": "Install the .NET SDK, run `dotnet new console`, and rewrite your zoo (or any small Java class you've written) in C#: a class with properties, a constructor, and a Main that creates instances and prints them with string interpolation. Get it compiling and running.",
+          "aiRubric": "A compiling C# console app using auto-properties, a constructor, string interpolation, and Main — showing the Java→C# translation done correctly."
+        },
+        "quiz": [
+          {
+            "q": "The C# equivalent of a Java getter/setter pair is…",
+            "options": [
+              "A field",
+              "A property (get; set;)",
+              "A namespace",
+              "An interface"
+            ],
+            "answer": 1,
+            "why": "Properties give getter/setter behavior with field-like syntax."
+          },
+          {
+            "q": "String interpolation in C# uses…",
+            "options": [
+              "+ only",
+              "$\"...{x}...\"",
+              "%s",
+              "f\"...\""
+            ],
+            "answer": 1,
+            "why": "$-prefixed strings embed expressions in braces."
+          }
+        ]
+      },
+      {
+        "id": "cs-2",
+        "title": "Collections & LINQ",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "The workhorses",
+            "p": "List<T> (dynamic array), Dictionary<K,V> (hash map), arrays for fixed size. Generic, type-safe.",
+            "code": "var nums = new List<int> { 4, 1, 7, 3 };\nvar ages = new Dictionary<string,int> { [\"Dan\"] = 18 };"
+          },
+          {
+            "h": "LINQ — query your data",
+            "p": "LINQ lets you filter/transform/sort collections declaratively, like SQL over objects. Master Where, Select, OrderBy, Any, Count.",
+            "code": "var bigEven = nums.Where(n => n % 2 == 0)\n                  .OrderBy(n => n)\n                  .Select(n => n * 10)\n                  .ToList();"
+          },
+          {
+            "h": "Lambdas",
+            "p": "`n => n % 2 == 0` is a lambda: an inline function. It's the argument LINQ methods take. Same idea as a Java lambda."
+          }
+        ],
+        "doThis": {
+          "task": "Make a List of 8+ 'Product' objects (Name, Price, Category). Using ONLY LINQ (no manual loops), print: all products under 50, the count per category, and the single most expensive one. Run it.",
+          "aiRubric": "LINQ-only queries (Where/OrderBy/GroupBy/Count/First) over a List<Product> producing the three requested results, with no manual for-loops doing the filtering."
+        }
+      },
+      {
+        "id": "cs-3",
+        "title": "Interfaces, abstract classes & destructors",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "The GAMA question",
+            "p": "Interviewers ask: abstract class vs interface? which languages have a destructor? Own these cold."
+          },
+          {
+            "h": "Abstract class vs interface",
+            "p": "An abstract class can hold state + some implemented methods + abstract ones; a class extends ONE. An interface is a pure contract (method signatures); a class implements MANY. Rule of thumb: 'is-a' shared base → abstract class; 'can-do' capability → interface.",
+            "code": "public abstract class Animal {\n    public string Name { get; set; }\n    public abstract string Speak();   // must override\n    public void Sleep() => Console.WriteLine(\"zzz\");  // shared\n}\npublic interface IWashable { void Wash(); }"
+          },
+          {
+            "h": "Destructors / IDisposable",
+            "p": "C# HAS a destructor `~ClassName()` (finalizer), but real cleanup uses IDisposable + Dispose() with `using`. C++ has true destructors; Java does NOT (it has finalize/GC). That contrast is a classic interview point."
+          }
+        ],
+        "doThis": {
+          "task": "Build the GAMA-style start of a car importer: an abstract `Vehicle` (Plate, Hp, abstract Describe()), concrete Car and Truck, and an interface `IWashable`. Make Car implement IWashable. Store vehicles in a List<Vehicle> and loop Describe() (polymorphism). Keep it OPEN to extension.",
+          "aiRubric": "An abstract Vehicle with abstract Describe(), ≥2 concrete subclasses, an IWashable interface implemented by one, a polymorphic loop over List<Vehicle>, and code structured to add new vehicle types without editing existing ones."
+        },
+        "quiz": [
+          {
+            "q": "A class can inherit ___ abstract classes and implement ___ interfaces.",
+            "options": [
+              "many / one",
+              "one / many",
+              "one / one",
+              "many / many"
+            ],
+            "answer": 1,
+            "why": "Single inheritance of classes, multiple interfaces."
+          },
+          {
+            "q": "Which language does NOT have a true destructor?",
+            "options": [
+              "C++",
+              "C#",
+              "Java",
+              "None"
+            ],
+            "answer": 2,
+            "why": "Java relies on GC/finalize; C++ and C# have destructor/finalizer syntax."
+          }
+        ]
+      },
+      {
+        "id": "cs-4",
+        "title": "Delegates, events & async",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Delegates = function references",
+            "p": "A delegate is a typed pointer to a method; `Action` (no return) and `Func<T>` (returns T) are built-in ones. Events are delegates the outside can subscribe to but only the owner can fire."
+          },
+          {
+            "h": "async/await",
+            "p": "Mark a method `async` and `await` slow operations (I/O, network) so the thread isn't blocked. Returns a Task. Same mental model you'll reuse for responsive apps and servers.",
+            "code": "async Task<string> FetchAsync() {\n    await Task.Delay(1000);   // non-blocking wait\n    return \"done\";\n}"
+          }
+        ],
+        "doThis": {
+          "task": "Write a method that takes a `Func<int,int>` and applies it to an array (proving delegates). Then write an async method that 'processes' each item with `await Task.Delay(200)` and prints progress, awaited from Main. Run it and watch it stay responsive.",
+          "aiRubric": "Correct use of a Func<> delegate passed as an argument, plus an async/await method returning Task and awaited properly from Main."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: the Car-Importer system (GAMA-style)",
+      "goal": "GAMA's workshop adds requirements stage by stage without warning — so build this to be OPEN for extension from the start.",
+      "milestones": [
+        {
+          "id": "csc1",
+          "text": "Stage 1: sell & manage vehicles (model, plate, HP, color). Abstract Vehicle + subclasses.",
+          "hint": "Program to the abstract base, not concrete types."
+        },
+        {
+          "id": "csc2",
+          "text": "Stage 2: add stock management + a car-wash scheduler (interface IWashable).",
+          "hint": "New capability = new interface, don't bloat the base."
+        },
+        {
+          "id": "csc3",
+          "text": "Stage 3: add accessories/add-ons handled differently per vehicle (polymorphism).",
+          "hint": "Override a method rather than an if-by-type."
+        },
+        {
+          "id": "csc4",
+          "text": "Reflect: could you add a 'Motorcycle' without editing existing classes? If not, refactor.",
+          "hint": "That's the open/closed principle they're really testing."
+        }
+      ]
+    }
+  },
+  "c": {
+    "trackId": "c",
+    "title": "C — learn how memory really works",
+    "intro": "C has no safety net, and that's the point: it forces you to understand memory, the thing that makes low-level cyber click. Short programs, deep understanding.",
+    "whatToLearn": [
+      "Compile → link → run, and basic types & I/O.",
+      "Pointers: address-of, dereference, arithmetic.",
+      "Arrays, C-strings (null terminator!), and structs.",
+      "Dynamic memory (malloc/free) and bitwise operations."
+    ],
+    "lessons": [
+      {
+        "id": "c-1",
+        "title": "Compile, run, and types",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "C is compiled",
+            "p": "Unlike Python, C source must be turned into a machine-code executable first. gcc does compile+link in one step. Install gcc (or use WSL), then:",
+            "code": "// hello.c\n#include <stdio.h>\nint main(void) {\n    printf(\"Hello, %s\\n\", \"world\");\n    return 0;\n}\n// build & run:\n//   gcc hello.c -o hello\n//   ./hello"
+          },
+          {
+            "h": "Types are fixed-size",
+            "p": "int (usually 4 bytes), char (1 byte, also holds small ints), double, etc. Unlike Python, sizes matter — that's the whole low-level game. `printf` uses format specifiers: %d int, %c char, %s string, %p pointer, %x hex."
+          },
+          {
+            "h": "No true strings",
+            "p": "A C 'string' is just an array of chars ending in a hidden `\\0` (null terminator). Everything about C strings comes back to that terminator."
+          }
+        ],
+        "doThis": {
+          "task": "Install gcc (WSL is easiest on Windows). Compile and run hello.c. Then modify it to print an int, a char, and the same number in hex using printf format specifiers. Confirm `sizeof(int)` and `sizeof(char)` by printing them.",
+          "aiRubric": "Evidence of compiling with gcc and running; correct printf specifiers for int/char/hex; sizeof used to show type sizes."
+        },
+        "quiz": [
+          {
+            "q": "What ends a C string?",
+            "options": [
+              "A newline",
+              "A null terminator \\0",
+              "A space",
+              "Nothing"
+            ],
+            "answer": 1,
+            "why": "C strings are char arrays terminated by \\0 — miss it and functions read past the end."
+          },
+          {
+            "q": "gcc hello.c -o hello does…",
+            "options": [
+              "Only compiles",
+              "Compiles AND links into an executable named hello",
+              "Runs the program",
+              "Formats the code"
+            ],
+            "answer": 1,
+            "why": "It produces a runnable binary; you then run ./hello."
+          }
+        ]
+      },
+      {
+        "id": "c-2",
+        "title": "Pointers",
+        "minutes": 30,
+        "read": [
+          {
+            "h": "A pointer holds an address",
+            "p": "Every variable lives at a memory address. `&x` gives that address; a pointer stores it; `*p` dereferences (reads/writes what it points to).",
+            "code": "int x = 42;\nint *p = &x;      // p holds the address of x\nprintf(\"%d\\n\", *p); // 42 — follow the pointer\n*p = 99;           // writes through the pointer\nprintf(\"%d\\n\", x); // 99 — x changed"
+          },
+          {
+            "h": "Why pointers matter",
+            "p": "They let functions modify their caller's data, avoid copying big things, and are how arrays, strings, and dynamic memory all work under the hood. Cyber lives here."
+          },
+          {
+            "h": "Pointer arithmetic",
+            "p": "Adding 1 to an `int*` moves 4 bytes (one int), not 1 byte — the compiler scales by the type size. This is exactly how array indexing works: `arr[i]` is `*(arr + i)`."
+          }
+        ],
+        "doThis": {
+          "task": "Write a function `void swap(int *a, int *b)` that swaps two ints via pointers, and prove it works from main (the caller's variables actually change). Then declare an int array and print each element two ways: with arr[i] AND with *(arr + i).",
+          "aiRubric": "A correct pointer-based swap that mutates the caller's variables, plus array access shown both as arr[i] and *(arr+i), demonstrating pointer arithmetic understanding."
+        }
+      },
+      {
+        "id": "c-3",
+        "title": "Structs & strings",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "Structs group data",
+            "p": "A struct is a custom type bundling fields — the C ancestor of a class (data only, no methods).",
+            "code": "struct Point { int x, y; };\nstruct Point p = {3, 4};\nprintf(\"%d,%d\\n\", p.x, p.y);\n// via pointer: (*ptr).x  or  ptr->x"
+          },
+          {
+            "h": "Strings are char arrays",
+            "p": "`char name[] = \"Dan\";` is really {'D','a','n','\\0'}. string.h gives strlen, strcpy, strcmp — all of which walk until the \\0. Buffer overflows happen when you write past the array."
+          }
+        ],
+        "doThis": {
+          "task": "Define a struct `Student { char name[32]; int grade; };`. Make an array of 3, fill them, and write a function that takes a `Student*` and prints it using the -> operator. Then write your own `my_strlen(char *s)` that counts chars until \\0 (don't use strlen).",
+          "aiRubric": "A struct with array + int, an array of structs, a function taking Student* using ->, and a hand-written strlen that loops to the null terminator."
+        }
+      },
+      {
+        "id": "c-4",
+        "title": "Dynamic memory & bits",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "malloc / free",
+            "p": "When you don't know the size at compile time, ask the heap: `malloc(n * sizeof(int))` returns a pointer to n ints (or NULL if it fails). You MUST `free()` it later — forgetting is a memory leak; using after free is a bug hackers exploit.",
+            "code": "int *a = malloc(5 * sizeof(int));\nif (!a) return 1;          // always check\nfor (int i = 0; i < 5; i++) a[i] = i * i;\nfree(a);                   // give it back\na = NULL;                  // avoid dangling pointer"
+          },
+          {
+            "h": "Bitwise operators",
+            "p": "& (and), | (or), ^ (xor), ~ (not), << >> (shifts). Used for flags, masks, and low-level encoding. `x & 1` tests the lowest bit (odd/even); `x << 1` doubles; masks extract bytes: `(x >> 8) & 0xFF`."
+          }
+        ],
+        "doThis": {
+          "task": "Write a program that malloc's an int array whose size the user enters, fills it with 0..n-1, prints the sum, and frees it (check malloc for NULL). Separately, write `int count_bits(unsigned x)` that counts set bits using & and >>. Test with 0xFF (=8) and 0 (=0).",
+          "aiRubric": "malloc sized at runtime with a NULL check and matching free(); plus a count_bits using bitwise & and >> that returns 8 for 0xFF and 0 for 0."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: parse a binary buffer",
+      "goal": "Cyber research is often 'here are some bytes — what are they?'. Build the muscle.",
+      "milestones": [
+        {
+          "id": "cc1",
+          "text": "Create a byte buffer (unsigned char[]) with a made-up format: [1 byte type][2 byte length][payload].",
+          "hint": "Hard-code some bytes first so you control the input."
+        },
+        {
+          "id": "cc2",
+          "text": "Parse it: read the type, reconstruct the 2-byte length (watch byte order!), then read that many payload bytes.",
+          "hint": "length = (buf[1] << 8) | buf[2] — that's endianness in action."
+        },
+        {
+          "id": "cc3",
+          "text": "Print each field, and print the payload as both chars and hex.",
+          "hint": "%c vs %02x."
+        },
+        {
+          "id": "cc4",
+          "text": "Make it robust: reject a length that runs past the buffer end.",
+          "hint": "That check is literally how you avoid a buffer over-read."
+        }
+      ]
+    }
+  },
+  "asm": {
+    "trackId": "asm",
+    "title": "x86 Assembly — read the machine",
+    "intro": "You don't need to write big programs in ASM — you need to READ it fluently and know the terms cold, because that's what GAMA tests. Use godbolt.org to write tiny C and watch the assembly it produces.",
+    "whatToLearn": [
+      "Registers and what each is for; mov and arithmetic.",
+      "Control flow: cmp, the flags, and conditional jumps.",
+      "The stack: push/pop, call/ret, and a stack frame.",
+      "Syscalls (int 0x80 / int 0x21) and reading a disassembly."
+    ],
+    "lessons": [
+      {
+        "id": "asm-1",
+        "title": "Registers & moving data",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "Registers are the CPU's variables",
+            "p": "Tiny, ultra-fast storage inside the CPU. On 32-bit x86: eax, ebx, ecx, edx (general), esi/edi (indices), esp (stack pointer), ebp (base pointer), eip (instruction pointer). eax often holds return values; ecx is the classic loop counter."
+          },
+          {
+            "h": "mov and arithmetic",
+            "p": "`mov dest, src` copies. add/sub/inc/dec do math. Intel syntax puts the destination first.",
+            "code": "mov eax, 5      ; eax = 5\nadd eax, 3      ; eax = 8\nmov ebx, eax    ; ebx = 8\ndec ebx         ; ebx = 7"
+          },
+          {
+            "h": "See it yourself",
+            "p": "On godbolt.org pick x86-64 gcc, write `int f(){ int a=5; return a+3; }` and read the assembly. You'll SEE the mov/add. Reading C↔ASM side by side is the fastest way to learn."
+          }
+        ],
+        "doThis": {
+          "task": "On godbolt.org, write three tiny C functions: one that returns a constant, one that adds two params, one that multiplies. Read the assembly for each. Write down (in your own words) which register the return value comes back in, and how the parameters arrive.",
+          "aiRubric": "Correct observations from godbolt: return value in eax/rax, parameters in registers (edi/esi... or the calling convention), and identifying mov/add/imul in the output."
+        },
+        "quiz": [
+          {
+            "q": "In Intel syntax, `mov eax, ebx` does…",
+            "options": [
+              "eax → ebx",
+              "ebx → eax (eax = ebx)",
+              "swaps them",
+              "adds them"
+            ],
+            "answer": 1,
+            "why": "Destination first: eax gets the value of ebx."
+          },
+          {
+            "q": "Which register conventionally holds a function's return value?",
+            "options": [
+              "esp",
+              "eax",
+              "ebp",
+              "eip"
+            ],
+            "answer": 1,
+            "why": "eax (rax in 64-bit) carries the return value."
+          }
+        ]
+      },
+      {
+        "id": "asm-2",
+        "title": "Control flow & flags",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "cmp sets flags",
+            "p": "`cmp a, b` computes a-b but throws away the result, keeping only the FLAGS (zero flag ZF, sign, carry). Conditional jumps then read those flags.",
+            "code": "    cmp eax, 10\n    je  equal     ; jump if ZF=1 (eax == 10)\n    jg  bigger    ; jump if greater\n    jmp done\nequal:\n    ; ...\ndone:"
+          },
+          {
+            "h": "The jumps",
+            "p": "je/jz (equal/zero), jne/jnz (not equal), jg/jl (greater/less signed), ja/jb (above/below unsigned). An if-statement in C becomes a cmp + conditional jump in ASM."
+          },
+          {
+            "h": "loop",
+            "p": "`loop label` decrements ecx and jumps while ecx≠0 — a built-in counted loop. That's why ecx is 'the counter register'."
+          }
+        ],
+        "doThis": {
+          "task": "On godbolt, write a C function with an if/else (e.g. return the max of two ints) and a second with a for-loop summing 1..n. Identify in the assembly: the cmp, which conditional jump implements your if, and how the loop uses a counter + a backward jump. Explain it in writing.",
+          "aiRubric": "Correctly maps the C if/else to cmp + a specific conditional jump, and the for-loop to a counter register with a compare and a backward jump."
+        }
+      },
+      {
+        "id": "asm-3",
+        "title": "The stack, call & ret",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "The stack grows down",
+            "p": "push puts a value on the stack and decrements esp; pop does the reverse. It's LIFO scratch space for locals and saved registers."
+          },
+          {
+            "h": "call & ret",
+            "p": "`call f` pushes the return address (where to come back to) then jumps to f. `ret` pops that address and jumps back. That pushed address is exactly what buffer-overflow attacks try to overwrite."
+          },
+          {
+            "h": "Stack frame",
+            "p": "A function sets up a frame: push ebp; mov ebp, esp — now ebp is a stable anchor to reach parameters and locals while esp moves. Prologue sets it up, epilogue (leave/pop ebp; ret) tears it down."
+          }
+        ],
+        "doThis": {
+          "task": "On godbolt, write a C function that calls another function which has a couple of local variables. In the assembly, find: the call instruction, the callee's prologue (push ebp / mov ebp, esp), where locals live relative to ebp/esp, and the ret. Annotate each line in your own words.",
+          "aiRubric": "Identifies call/ret, the prologue setting up the stack frame, locals addressed via ebp/esp offsets, and explains that call pushes the return address."
+        }
+      },
+      {
+        "id": "asm-4",
+        "title": "Syscalls & reading disassembly",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Talking to the OS",
+            "p": "To actually do I/O, ASM asks the kernel via a software interrupt. Linux 32-bit: put the syscall number in eax, args in ebx/ecx/edx, then `int 0x80`. DOS used `int 0x21` with the service in ah. 64-bit Linux uses the `syscall` instruction."
+          },
+          {
+            "h": "Reading a disassembly",
+            "p": "Tools like objdump or a debugger show address: bytes: mnemonic. You read top-down, following jumps and calls. You're not writing — you're understanding what a binary does, which is the research half of GAMA."
+          }
+        ],
+        "doThis": {
+          "task": "Take any small C program you compiled, and run `objdump -d ./a.out` (or use godbolt's assembly). Find main, and walk through it line by line writing a plain-English comment for each instruction. Identify at least one call and one conditional jump.",
+          "aiRubric": "A line-by-line plain-English annotation of a real disassembly of main, correctly identifying a call and a conditional jump."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: explain a mystery function",
+      "goal": "Prove you can read cold assembly — the core GAMA/research skill.",
+      "milestones": [
+        {
+          "id": "ac1",
+          "text": "Have a friend (or an AI) give you a short unknown C function compiled to ASM (or grab one from godbolt).",
+          "hint": "Don't look at the C first."
+        },
+        {
+          "id": "ac2",
+          "text": "From the ASM ALONE, work out what it computes.",
+          "hint": "Track each register like a variable."
+        },
+        {
+          "id": "ac3",
+          "text": "Write your guess of the original C, then reveal and compare.",
+          "hint": "Loops = compare + backward jump; branches = cmp + conditional jump."
+        }
+      ]
+    }
+  },
+  "linux": {
+    "trackId": "linux",
+    "title": "Linux — become fluent in the shell",
+    "intro": "Cyber and research live on Unix. This course makes you fast and dangerous at the command line. Install WSL (`wsl --install` in an admin PowerShell) for a real Ubuntu shell on Windows.",
+    "whatToLearn": [
+      "Navigate and manage files without a mouse.",
+      "Compose tools with pipes, redirection and grep.",
+      "Permissions and processes.",
+      "Write a bash script with a loop and a condition."
+    ],
+    "lessons": [
+      {
+        "id": "lx-1",
+        "title": "Move and manage",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "The tree",
+            "p": "Everything hangs off `/`. Your stuff is in `~` (home). Key dirs: /etc (config), /var (logs), /bin & /usr/bin (programs), /tmp."
+          },
+          {
+            "h": "The core verbs",
+            "p": "pwd (where am I), ls -la (list, all + details), cd (move), cat/less (read), cp/mv/rm (copy/move/remove), mkdir/touch (create). `man <cmd>` explains any command — your built-in teacher."
+          }
+        ],
+        "doThis": {
+          "task": "In WSL/Linux: make a directory `lab`, cd into it, create three files with touch, list them with ls -la, copy one, rename another with mv, then remove one. Finally run `man ls` and find the flag that sorts by modification time.",
+          "aiRubric": "A shell session showing mkdir/cd/touch/ls -la/cp/mv/rm used correctly, and the correct ls flag for sort-by-time (-t) found via man."
+        }
+      },
+      {
+        "id": "lx-2",
+        "title": "Pipes, grep & redirection",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "The Unix philosophy",
+            "p": "Small tools, composed. The pipe `|` feeds one command's output into the next's input. That composition is the whole power of the shell.",
+            "code": "cat access.log | grep \"404\" | wc -l   # how many 404s?\nps aux | grep python                    # find python processes"
+          },
+          {
+            "h": "grep",
+            "p": "Searches text. `grep -i` ignores case, `-r` recurses directories, `-n` shows line numbers, `-v` inverts. It's how you find a needle in any haystack of files."
+          },
+          {
+            "h": "Redirection",
+            "p": "`>` writes stdout to a file (overwrite), `>>` appends, `2>` redirects errors. `cmd > out.txt 2>&1` captures everything."
+          }
+        ],
+        "doThis": {
+          "task": "Grab any text/log file (or make one). Using a single pipeline, count how many lines contain a chosen word. Then use grep -rn to find every place a word appears across a folder, and redirect the results into found.txt. Show the pipeline you used.",
+          "aiRubric": "A working pipe using grep + wc -l to count matches, a recursive grep -rn across a directory, and output redirected to a file."
+        },
+        "quiz": [
+          {
+            "q": "`cat log | grep err | wc -l` prints…",
+            "options": [
+              "The file",
+              "The number of lines containing 'err'",
+              "All errors",
+              "Nothing"
+            ],
+            "answer": 1,
+            "why": "grep filters to matching lines, wc -l counts them."
+          },
+          {
+            "q": "`>>` differs from `>` because it…",
+            "options": [
+              "Appends instead of overwriting",
+              "Runs faster",
+              "Redirects errors",
+              "Reads input"
+            ],
+            "answer": 0,
+            "why": "> overwrites the file; >> appends to it."
+          }
+        ]
+      },
+      {
+        "id": "lx-3",
+        "title": "Permissions & processes",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "rwx",
+            "p": "Each file has read/write/execute bits for owner/group/others (e.g. `rwxr-xr--`). chmod changes them (`chmod +x script.sh` makes it runnable), chown changes owner. `sudo` runs one command as root."
+          },
+          {
+            "h": "Processes",
+            "p": "`ps aux` lists running processes, `top`/`htop` show them live, `kill <PID>` asks one to stop (`kill -9` forces). `&` runs something in the background."
+          }
+        ],
+        "doThis": {
+          "task": "Create a one-line shell script, make it executable with chmod +x, and run it as ./script.sh. Then run `sleep 300 &` in the background, find its PID with ps, and kill it. Show the commands.",
+          "aiRubric": "Uses chmod +x to make a script runnable, launches a background process with &, finds its PID via ps, and kills it."
+        }
+      },
+      {
+        "id": "lx-4",
+        "title": "Your first bash script",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "A script is just commands in a file",
+            "p": "Start with a shebang so the OS knows how to run it, make it executable, and run it.",
+            "code": "#!/bin/bash\nfor f in *.txt; do\n    lines=$(wc -l < \"$f\")\n    if [ \"$lines\" -gt 10 ]; then\n        echo \"$f is big ($lines lines)\"\n    fi\ndone"
+          },
+          {
+            "h": "The pieces",
+            "p": "Variables: `name=value`, use as `$name`. `$(cmd)` captures a command's output. `for x in ...; do ... done`, and `if [ condition ]; then ... fi`. Mind the spaces inside [ ]."
+          }
+        ],
+        "doThis": {
+          "task": "Write report.sh: loop over all .txt files in a folder, and for each print its name and line count; at the end print the total. Use a variable, $(...) capture, a for loop and an if. chmod +x and run it.",
+          "aiRubric": "A bash script with shebang, a for loop over files, $(...) command substitution, a variable, an if condition, producing per-file and total counts."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: a log-analysis script",
+      "goal": "Turn raw shell skills into a real tool.",
+      "milestones": [
+        {
+          "id": "lxc1",
+          "text": "Get a log file (a web access log sample works great).",
+          "hint": "Even inventing 50 lines is fine."
+        },
+        {
+          "id": "lxc2",
+          "text": "Script it: top 5 IPs by hits, count of errors (4xx/5xx), and busiest hour.",
+          "hint": "grep + sort + uniq -c + sort -rn is the classic combo."
+        },
+        {
+          "id": "lxc3",
+          "text": "Take the log path as an argument ($1) and print a tidy summary.",
+          "hint": "Guard against a missing argument."
+        }
+      ]
+    }
+  },
+  "cyber_high": {
+    "trackId": "cyber_high",
+    "title": "Networks — how data really moves",
+    "intro": "This is the 'high-level' cyber GAMA tests and the backbone of your CS project. You'll trace real traffic, not just memorize acronyms.",
+    "whatToLearn": [
+      "The layered model and where each protocol lives.",
+      "TCP vs UDP and the 3-way handshake.",
+      "IP, ARP, DHCP, DNS — trace 'open a website' end to end.",
+      "HTTP, and capturing a real handshake in Wireshark."
+    ],
+    "lessons": [
+      {
+        "id": "ch-1",
+        "title": "The layers",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Why layers",
+            "p": "Networking is split into layers so each solves one problem: the link moves frames on a wire, IP routes packets between networks, TCP/UDP moves data between programs, the app layer is your protocol (HTTP, DNS...). Each layer wraps the one above (encapsulation)."
+          },
+          {
+            "h": "TCP/IP model",
+            "p": "Link → Internet (IP) → Transport (TCP/UDP) → Application. Place any term on its layer: MAC/ARP = link, IP/ICMP = internet, TCP/UDP/ports = transport, HTTP/DNS/SSH = application. GAMA loves 'which layer is X on?'."
+          }
+        ],
+        "doThis": {
+          "task": "Draw (on paper or a note) the 4 TCP/IP layers, and correctly place these on them: HTTP, IP, ARP, TCP, DNS, MAC address, UDP, ICMP, a port number. Then write one sentence per layer on what it's responsible for.",
+          "aiRubric": "Each term placed on the correct TCP/IP layer, with a correct one-line responsibility per layer."
+        },
+        "quiz": [
+          {
+            "q": "A port number belongs to which layer?",
+            "options": [
+              "Link",
+              "Internet",
+              "Transport",
+              "Application"
+            ],
+            "answer": 2,
+            "why": "Ports identify programs at the transport layer (TCP/UDP)."
+          },
+          {
+            "q": "ARP operates at the…",
+            "options": [
+              "Application layer",
+              "Transport layer",
+              "Link/Internet boundary (IP↔MAC)",
+              "Physical only"
+            ],
+            "answer": 2,
+            "why": "ARP maps an IP to a MAC on the local link."
+          }
+        ]
+      },
+      {
+        "id": "ch-2",
+        "title": "TCP vs UDP & the handshake",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Two transports",
+            "p": "TCP: connection-oriented, reliable, ordered — a phone call. It handshakes, acknowledges, retransmits. UDP: connectionless, fast, no guarantees — a postcard. DNS, streaming and games use UDP; the web, SSH and your chat use TCP."
+          },
+          {
+            "h": "The 3-way handshake",
+            "p": "Before TCP data flows: client → SYN, server → SYN-ACK, client → ACK. Now both agree on sequence numbers and the connection is 'established'. This is THE most-asked networking detail."
+          }
+        ],
+        "doThis": {
+          "task": "In your own words write: 3 things TCP gives you that UDP doesn't, one real use for each, and the exact 3 messages of the handshake with who sends each. Then explain why a video call might prefer UDP.",
+          "aiRubric": "Correctly contrasts reliability/ordering/flow-control of TCP vs UDP, lists the SYN→SYN-ACK→ACK handshake with correct senders, and gives a sound reason UDP suits real-time media."
+        }
+      },
+      {
+        "id": "ch-3",
+        "title": "Open a website — the full trace",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "The journey of one click",
+            "p": "Type example.com and hit enter. (1) DNS resolves the name to an IP (UDP/53). (2) Your machine needs the MAC of the gateway → ARP. (3) TCP handshake to the server's IP on port 443. (4) TLS sets up encryption. (5) HTTP GET / travels; the server responds. Every acronym you drill lives somewhere in this chain."
+          },
+          {
+            "h": "Supporting cast",
+            "p": "DHCP gave you your IP/gateway/DNS when you joined the network. NAT rewrites your private IP to the router's public one on the way out. TTL stops packets looping forever."
+          }
+        ],
+        "doThis": {
+          "task": "Write the complete step-by-step of what happens from typing a URL to seeing the page, naming the protocol at each step (DHCP, DNS, ARP, TCP, TLS, HTTP) and whether it's TCP or UDP. Use the AI tutor to grade your trace and quiz you on any gap.",
+          "aiRubric": "An end-to-end trace in correct order (DHCP earlier, then DNS, ARP, TCP handshake, TLS, HTTP), naming transport (UDP for DNS, TCP for the rest) correctly."
+        }
+      },
+      {
+        "id": "ch-4",
+        "title": "See it live in Wireshark",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "Watch real packets",
+            "p": "Wireshark captures actual traffic frame by frame. Filters like `tcp`, `dns`, or `ip.addr == x` narrow it down. Seeing a real SYN/SYN-ACK/ACK makes the theory permanent."
+          },
+          {
+            "h": "What to look for",
+            "p": "Start a capture, load a small http site or run a DNS lookup, then find: a DNS query+response, and a TCP handshake (3 packets, SYN → SYN-ACK → ACK). Click each and read the layers in the detail pane."
+          }
+        ],
+        "doThis": {
+          "task": "Install Wireshark. Capture while you visit a plain http site (or `nslookup example.com`). Apply a filter, find the DNS query/response and the TCP 3-way handshake. Screenshot the 3 handshake packets and label which is SYN, SYN-ACK, ACK.",
+          "aiRubric": "Evidence of a real Wireshark capture with a filter applied, correctly identifying the DNS exchange and labelling the SYN/SYN-ACK/ACK packets."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: annotate a real capture",
+      "goal": "Connect every acronym to a real packet.",
+      "milestones": [
+        {
+          "id": "chc1",
+          "text": "Capture 30 seconds of normal browsing in Wireshark.",
+          "hint": "Filter to your own IP to cut noise."
+        },
+        {
+          "id": "chc2",
+          "text": "Find and label: a DNS lookup, a TCP handshake, and an HTTP or TLS start.",
+          "hint": "Use display filters: dns, tcp.flags.syn==1."
+        },
+        {
+          "id": "chc3",
+          "text": "Write a short 'story' of one connection from handshake to data.",
+          "hint": "This is exactly how you'd answer a GAMA networks question."
+        }
+      ]
+    }
+  },
+  "cyber_low": {
+    "trackId": "cyber_low",
+    "title": "Bits & memory — the machine's reality",
+    "intro": "The 'low-level' half: how the machine represents everything, and how memory is laid out. Pairs tightly with C and ASM.",
+    "whatToLearn": [
+      "Number bases and bitwise thinking; two's complement.",
+      "Endianness and reading a hex dump.",
+      "The memory layout of a running process.",
+      "Executable formats: PE vs ELF."
+    ],
+    "lessons": [
+      {
+        "id": "cl-1",
+        "title": "Bases & bitwise",
+        "minutes": 25,
+        "read": [
+          {
+            "h": "Binary and hex",
+            "p": "Computers store everything as bits. Hex (base 16) is shorthand: one hex digit = 4 bits, two = one byte (0x00–0xFF). Fluency converting binary↔hex↔decimal is foundational."
+          },
+          {
+            "h": "Bit operations",
+            "p": "AND masks bits off, OR sets them, XOR flips/compares, NOT inverts, shifts multiply/divide by powers of two. `x & 1` = is-odd; `(x >> 8) & 0xFF` extracts the second byte. This is how flags, colors, permissions and protocols pack data."
+          },
+          {
+            "h": "Two's complement",
+            "p": "Negative integers are stored by inverting the bits and adding 1. That's why a signed byte ranges -128..127, and why overflow wraps around. Knowing this explains a whole class of bugs."
+          }
+        ],
+        "doThis": {
+          "task": "By hand (then check with a calculator): convert 0b10110101 to hex and decimal. Compute 0xF0 & 0x3C and 0x0F | 0xA0 in hex. Explain what `x & 1` tells you and what `x << 4` does. Write it up.",
+          "aiRubric": "Correct binary→hex→decimal conversion, correct AND/OR results in hex, and correct explanations of &1 (parity) and <<4 (×16)."
+        },
+        "quiz": [
+          {
+            "q": "How many bits does one hex digit represent?",
+            "options": [
+              "1",
+              "2",
+              "4",
+              "8"
+            ],
+            "answer": 2,
+            "why": "16 values = 4 bits; two hex digits make a byte."
+          },
+          {
+            "q": "`x & 1 == 0` means x is…",
+            "options": [
+              "Negative",
+              "Even",
+              "Odd",
+              "Zero"
+            ],
+            "answer": 1,
+            "why": "The lowest bit is 0 for even numbers."
+          }
+        ]
+      },
+      {
+        "id": "cl-2",
+        "title": "Endianness & hex dumps",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Byte order",
+            "p": "A multi-byte number can be stored low-byte-first (little-endian, x86) or high-byte-first (big-endian, network order). The value 0x12345678 in memory is 78 56 34 12 on little-endian. Get this wrong and your parser reads garbage."
+          },
+          {
+            "h": "Reading a dump",
+            "p": "`xxd file` or a hex editor shows offset | hex bytes | ASCII. You learn to spot magic numbers (MZ, 7F 45 4C 46 = ELF), lengths, and strings. This is the daily work of reverse engineering."
+          }
+        ],
+        "doThis": {
+          "task": "Run `xxd` (Linux) or open any file in a hex editor. Identify the first few 'magic' bytes and look up what format they signal. Then take the 4 bytes 78 56 34 12 and state the integer they represent in little-endian vs big-endian.",
+          "aiRubric": "Reads a hex dump, identifies a magic number correctly, and gives the right little-endian (0x12345678) vs big-endian (0x78563412) interpretation."
+        }
+      },
+      {
+        "id": "cl-3",
+        "title": "How a process is laid out",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "The memory map",
+            "p": "A running program's memory has regions: the code (.text, read-only instructions), initialized data (.data), zero-inited data (.bss), the heap (grows up, malloc), and the stack (grows down, locals + call frames). Between heap and stack is free space."
+          },
+          {
+            "h": "Why attackers care",
+            "p": "Overflowing a stack buffer can overwrite the saved return address (from `call`) and hijack execution. Knowing the layout is knowing where the bodies are buried — the essence of low-level security."
+          }
+        ],
+        "doThis": {
+          "task": "Draw the memory layout of a process from low to high addresses (text, data, bss, heap↑ ... ↓stack). For a small C program, say which region holds: a string literal, a global int = 0, a malloc'd array, and a local variable. Verify your reasoning with the AI tutor.",
+          "aiRubric": "A correct low→high layout (text/data/bss/heap/stack) and correct placement: literal in text/rodata, global=0 in bss, malloc in heap, local on stack."
+        }
+      },
+      {
+        "id": "cl-4",
+        "title": "PE vs ELF",
+        "minutes": 15,
+        "read": [
+          {
+            "h": "Executable formats",
+            "p": "Windows uses PE (Portable Executable): starts with the 'MZ' DOS header, then a PE header, then sections (.text/.data...). Linux uses ELF (magic 7F 45 4C 46). Both describe where code/data go and how to load them. RVAs (relative virtual addresses) are offsets from the load base."
+          }
+        ],
+        "doThis": {
+          "task": "Open a .exe and an ELF binary (or WSL's /bin/ls) in a hex editor. Confirm the .exe starts with 'MZ' and the ELF with 7F 45 4C 46. Write one paragraph on what a section is and why an executable needs a header.",
+          "aiRubric": "Confirms the MZ and 7F454C46 magics from a real dump and explains sections + why the loader needs header metadata."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: decode a hex blob by hand",
+      "goal": "Bring bits, endianness and formats together.",
+      "milestones": [
+        {
+          "id": "clc1",
+          "text": "Get a small binary blob (or export 32 bytes of a file as hex).",
+          "hint": "xxd | head."
+        },
+        {
+          "id": "clc2",
+          "text": "Identify any magic/header bytes and any readable ASCII strings.",
+          "hint": "The ASCII column of the dump."
+        },
+        {
+          "id": "clc3",
+          "text": "Interpret a 2- or 4-byte field as an integer, stating the endianness you assumed.",
+          "hint": "Then flip it and see which makes sense."
+        }
+      ]
+    }
+  },
+  "cmd": {
+    "trackId": "cmd",
+    "title": "Windows CMD — recon from the terminal",
+    "intro": "Fast native investigation of a Windows machine and its network — exactly the 'Windows' knowledge GAMA tests. You already built a DNS tool in Python; now own the CLI.",
+    "whatToLearn": [
+      "Files and navigation in cmd.",
+      "Network commands: ipconfig, ping, tracert, nslookup.",
+      "Live recon: netstat, tasklist, arp.",
+      "Automate with a .bat script."
+    ],
+    "lessons": [
+      {
+        "id": "cd-1",
+        "title": "Files & navigation",
+        "minutes": 15,
+        "read": [
+          {
+            "h": "The basics",
+            "p": "dir (list), cd (change dir), type (print a file), copy/move/del, mkdir/rmdir. `cd \\` jumps to the drive root; `cd ..` goes up. `help <cmd>` or `<cmd> /?` documents anything."
+          }
+        ],
+        "doThis": {
+          "task": "In cmd: make a folder, cd in, create a file with `echo hello > note.txt`, print it with type, copy it, then del the copy. Run `dir /?` and find the switch that shows files sorted by size.",
+          "aiRubric": "Uses dir/cd/echo>/type/copy/del correctly and finds the dir sort switch (/O:S) via help."
+        }
+      },
+      {
+        "id": "cd-2",
+        "title": "Network commands",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "See your network",
+            "p": "`ipconfig /all` shows your IP, gateway, MAC and DNS. `/release` + `/renew` re-lease your IP; `/flushdns` clears the DNS cache."
+          },
+          {
+            "h": "Reach out",
+            "p": "`ping host` tests reachability + latency. `tracert host` lists every router hop. `nslookup name` queries DNS — the CLI version of the tool you built in Python."
+          }
+        ],
+        "doThis": {
+          "task": "Run ipconfig /all and note your IPv4, gateway and DNS server. ping your gateway and a public site. tracert a website and count the hops. nslookup a domain and compare the answer to your Python DNS tool.",
+          "aiRubric": "Reports IPv4/gateway/DNS from ipconfig, uses ping + tracert meaningfully, and connects nslookup output to their own DNS tool."
+        },
+        "quiz": [
+          {
+            "q": "Which clears the local DNS cache?",
+            "options": [
+              "ipconfig /renew",
+              "ipconfig /flushdns",
+              "ping -f",
+              "nslookup"
+            ],
+            "answer": 1,
+            "why": "/flushdns empties the resolver cache."
+          },
+          {
+            "q": "tracert shows…",
+            "options": [
+              "Open ports",
+              "Each router hop to a destination",
+              "Running processes",
+              "DNS records"
+            ],
+            "answer": 1,
+            "why": "It maps the path hop by hop using increasing TTLs."
+          }
+        ]
+      },
+      {
+        "id": "cd-3",
+        "title": "Live recon",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Who's talking?",
+            "p": "`netstat -ano` lists every connection + listening port with the owning PID. Match that PID with `tasklist` to name the program. `taskkill /PID n /F` ends it. This chain — see connection → find process → identify → act — is core defensive cyber."
+          },
+          {
+            "h": "The neighborhood",
+            "p": "`arp -a` shows the IP↔MAC table (devices you've talked to), `route print` the routing table, `getmac` your adapters."
+          }
+        ],
+        "doThis": {
+          "task": "Run `netstat -ano`, pick an ESTABLISHED connection, take its PID, and use `tasklist | findstr <PID>` to find which program owns it. Write down the remote IP and the program. (Don't kill anything you don't recognize as safe.)",
+          "aiRubric": "Correctly pipes netstat→a PID→tasklist/findstr to attribute a live connection to a process, reporting the remote IP and program name."
+        }
+      },
+      {
+        "id": "cd-4",
+        "title": "Script it with .bat",
+        "minutes": 20,
+        "read": [
+          {
+            "h": "Batch files",
+            "p": "A .bat is cmd commands in a file. `@echo off` hides echoing, `%1` is the first argument, `for` loops, `if` branches. The publish.bat that deploys this very app is a batch script.",
+            "code": "@echo off\nset host=%1\nif \"%host%\"==\"\" set host=8.8.8.8\nping -n 2 %host%\nnslookup %host%"
+          }
+        ],
+        "doThis": {
+          "task": "Write netcheck.bat that takes a hostname as an argument (default to a public DNS if none), then runs ping and nslookup on it and prints a header line between them. Run it both with and without an argument.",
+          "aiRubric": "A .bat using @echo off, an argument %1 with a default, and running ping + nslookup with a separator, working with and without an argument."
+        }
+      }
+    ],
+    "capstone": {
+      "name": "Capstone: a connection investigation",
+      "goal": "Combine the recon chain into a mini incident check.",
+      "milestones": [
+        {
+          "id": "cdc1",
+          "text": "Snapshot all connections with netstat -ano > conns.txt.",
+          "hint": "Redirect to a file to study calmly."
+        },
+        {
+          "id": "cdc2",
+          "text": "For 3 connections, attribute each to a process via tasklist and note the remote IP.",
+          "hint": "findstr the PID."
+        },
+        {
+          "id": "cdc3",
+          "text": "Flag anything you can't explain and research the remote IP/port.",
+          "hint": "That triage instinct is the job."
+        }
+      ]
+    }
+  }
+}

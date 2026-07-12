@@ -1,0 +1,26 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0b0f17" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>LockIn</title>
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<link rel="stylesheet" href="./css/styles.css" />
+
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <span class="brand-name">Lock<b>In</b></span>
+    </div>
+    <div id="topbar-right"></div>
+  </header>
+
+  <main id="view" aria-live="polite"><!-- active module renders here --></main>
+
+  <nav id="tabbar" role="tablist"><!-- tabs injected by app.js --></nav>
+</div>
+
+<script type="module" src="./js/app.js"></script>
