@@ -15,10 +15,18 @@ def have_gcc():
     return shutil.which("gcc") is not None
 
 
-def _run(cmd, cwd, timeout=TIMEOUT, stdin=""):
+def have_dotnet():
+    return shutil.which("dotnet") is not None
+
+
+def have_nasm():
+    return shutil.which("nasm") is not None and shutil.which("gcc") is not None
+
+
+def _run(cmd, cwd, timeout=TIMEOUT, stdin="", env=None):
     try:
         p = subprocess.run(cmd, cwd=cwd, input=stdin, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=timeout)
+                           encoding="utf-8", errors="replace", timeout=timeout, env=env)
         return {"stdout": p.stdout, "stderr": p.stderr, "exit": p.returncode, "timed_out": False}
     except subprocess.TimeoutExpired as e:
         return {"stdout": e.stdout or "", "stderr": (e.stderr or "") +
@@ -55,6 +63,64 @@ def run_c(code, stdin=""):
         if comp["stderr"].strip():
             res["stderr"] = "warnings:\n" + comp["stderr"] + "\n" + res["stderr"]
         return res
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _dotnet_tfm():
+    """Target framework matching the installed SDK (e.g. net9.0), so the temp project builds."""
+    try:
+        v = subprocess.run(["dotnet", "--version"], capture_output=True, text=True, timeout=15).stdout.strip()
+        major = v.split(".")[0]
+        return "net%s.0" % major if major.isdigit() else "net8.0"
+    except Exception:
+        return "net8.0"
+
+
+_CSPROJ = ('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
+           '<OutputType>Exe</OutputType><TargetFramework>%s</TargetFramework>'
+           '<Nullable>disable</Nullable><ImplicitUsings>disable</ImplicitUsings>'
+           '<AssemblyName>app</AssemblyName></PropertyGroup></Project>')
+
+
+def run_csharp(code, stdin=""):
+    """Compile & run C# via the .NET SDK (dotnet run). Slower on the first build; that's normal."""
+    if not have_dotnet():
+        return {"stdout": "", "stderr": "dotnet not found — install the free .NET SDK "
+                "(dotnet.microsoft.com/download) to run C# here. The lesson still works: build & run it "
+                "in your own editor.", "exit": -1, "timed_out": False}
+    d = tempfile.mkdtemp(prefix="lockin_cs_")
+    try:
+        open(os.path.join(d, "Program.cs"), "w", encoding="utf-8").write(code)
+        open(os.path.join(d, "app.csproj"), "w", encoding="utf-8").write(_CSPROJ % _dotnet_tfm())
+        env = dict(os.environ, DOTNET_NOLOGO="1", DOTNET_CLI_TELEMETRY_OPTOUT="1",
+                   DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1", DOTNET_CLI_HOME=d)
+        res = _run(["dotnet", "run", "--project", d, "-v", "q", "--nologo"], d, timeout=90, stdin=stdin, env=env)
+        return res
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def run_asm(code, stdin=""):
+    """Assemble with nasm and link with gcc (write a global `main:` and you can use the C library)."""
+    if not have_nasm():
+        return {"stdout": "", "stderr": "assembly needs nasm + gcc on your PATH (or run it in a Linux "
+                "VM / WSL). Tip: declare `global main`, write `main:`, and link with gcc so printf/ret work.",
+                "exit": -1, "timed_out": False}
+    d = tempfile.mkdtemp(prefix="lockin_asm_")
+    try:
+        src = os.path.join(d, "prog.asm")
+        obj = os.path.join(d, "prog.obj" if os.name == "nt" else "prog.o")
+        out = os.path.join(d, "prog.exe" if os.name == "nt" else "prog.out")
+        open(src, "w", encoding="utf-8").write(code)
+        fmt = "win64" if os.name == "nt" else "elf64"
+        asm = _run(["nasm", "-f", fmt, src, "-o", obj], d, timeout=20)
+        if asm["exit"] != 0:
+            return {"stdout": "", "stderr": "assemble error:\n" + asm["stderr"], "exit": asm["exit"], "timed_out": False}
+        link = _run(["gcc", obj, "-o", out, "-no-pie"], d, timeout=20)
+        if link["exit"] != 0:
+            return {"stdout": "", "stderr": "link error:\n" + link["stderr"], "exit": link["exit"], "timed_out": False}
+        return _run([out], d, stdin=stdin)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

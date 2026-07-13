@@ -89,17 +89,56 @@ export async function syncState() {
   return pushed ? "pushed" : "";
 }
 
-let _loop = null;
-// Keep phone and PC in step in the background. Safe to call repeatedly (starts once).
-export function startAppSync(intervalMs = 15000) {
-  if (_loop) return;
-  let busy = false;
-  const tick = async () => {
-    if (busy || !labConfigured() || document.hidden) return;
-    busy = true;
-    try { await syncState(); } finally { busy = false; }
-  };
-  tick();
-  _loop = setInterval(tick, intervalMs);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(); });
+// ---- real-time link to the Lab (Server-Sent Events) ------------------------------------------
+// The Lab pushes app-state and its own progress the instant they change; we push our edits back the
+// moment they happen. No polling — changes cross devices in well under a second.
+let _es = null;
+let _esUrl = "";
+let _lastPushed = -1;
+let _started = false;
+
+function _openStream() {
+  const base = labUrl();
+  const want = base ? base + "/events" : "";
+  if (want === _esUrl && _es && _es.readyState !== 2) return; // already connected to the right Lab
+  if (_es) { try { _es.close(); } catch (_e) {} _es = null; }
+  _esUrl = want;
+  if (!want) return;
+  try {
+    _es = new EventSource(want);
+    _es.addEventListener("appstate", (e) => {
+      try {
+        const remote = JSON.parse(e.data);
+        if (remote && remote.version !== undefined && (remote.updatedAt || 0) > (S.getState().updatedAt || 0)) {
+          _lastPushed = remote.updatedAt || 0; // we now match the hub; don't echo it back
+          S.applyRemote(remote);
+        }
+      } catch (_e) {}
+    });
+    _es.addEventListener("labstatus", (e) => {
+      try {
+        const status = JSON.parse(e.data);
+        // per-device display data — store it WITHOUT bumping the sync clock
+        if (status && status.ok) { S.getState().lab = { status, syncedAt: new Date().toISOString() }; S.save(); S.emit(); }
+      } catch (_e) {}
+    });
+    _es.onerror = () => {}; // EventSource auto-reconnects; the watchdog re-points it if the URL changed
+  } catch (_e) { _es = null; }
+}
+
+// Start the real-time link. Safe to call once; keeps itself connected as the Lab URL changes.
+export function startAppSync() {
+  if (_started) return;
+  _started = true;
+  _openStream();
+  setInterval(_openStream, 4000); // (re)connect when the Lab URL is set/changed or the stream drops
+  // push local edits the instant they land (tiny debounce to coalesce rapid changes)
+  let pushT = null;
+  S.subscribe(() => {
+    if (!labConfigured()) return;
+    const ua = S.getState().updatedAt || 0;
+    if (ua <= _lastPushed) return; // nothing new (e.g. just a status refresh) — don't echo
+    clearTimeout(pushT);
+    pushT = setTimeout(() => { _lastPushed = S.getState().updatedAt || 0; pushState(); }, 300);
+  });
 }

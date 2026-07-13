@@ -2,12 +2,27 @@
 # The phone polls GET /status to show synced records and to auto-unlock its Focus Lock once you've
 # finished your Lab work. CORS is open (localhost tool on your own LAN) so the PWA can fetch it.
 import json
+import queue
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_PORT = 8765
 APP_STATE_FILE = "app_state.json"  # the phone/PC app state, relayed through the Lab (kept local)
+
+# Real-time push: every connected device holds a /events stream; we fan out changes to all of them.
+_subscribers = set()
+_subs_lock = threading.Lock()
+
+
+def _broadcast(event, data):
+    with _subs_lock:
+        subs = list(_subscribers)
+    for q in subs:
+        try:
+            q.put_nowait((event, data))
+        except Exception:
+            pass
 
 
 def local_ip():
@@ -57,8 +72,46 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(500, {"ok": False, "error": repr(e)})
         elif path == "/appstate":
             self._send(200, _Handler.app_state or {"updatedAt": 0})
+        elif path == "/events":
+            self._sse()
         else:
             self._send(404, {"ok": False, "error": "not found"})
+
+    def _sse_write(self, event, data):
+        payload = "event: %s\ndata: %s\n\n" % (event, json.dumps(data))
+        self.wfile.write(payload.encode("utf-8"))
+        self.wfile.flush()
+
+    def _sse(self):
+        """Server-Sent Events: push app-state and Lab-status changes to this device in real time."""
+        q = queue.Queue()
+        with _subs_lock:
+            _subscribers.add(q)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            # bring a freshly-connected device up to date immediately
+            self._sse_write("appstate", _Handler.app_state or {"updatedAt": 0})
+            try:
+                self._sse_write("labstatus", _Handler.snapshot())
+            except Exception:
+                pass
+            while True:
+                try:
+                    event, data = q.get(timeout=15)
+                    self._sse_write(event, data)
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")  # keepalive; also detects a dead connection
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass  # client disconnected
+        finally:
+            with _subs_lock:
+                _subscribers.discard(q)
 
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
@@ -73,6 +126,7 @@ class _Handler(BaseHTTPRequestHandler):
                         json.dump(data, f)
                 except Exception:
                     pass  # relaying still works from memory even if the disk write fails
+                _broadcast("appstate", data)  # push to every other connected device in real time
                 self._send(200, {"ok": True, "updatedAt": data.get("updatedAt", 0)})
             except Exception as e:
                 self._send(400, {"ok": False, "error": repr(e)})
@@ -90,6 +144,7 @@ class SyncServer:
         self.port = port
         self.httpd = None
         self.thread = None
+        self._snapshot = snapshot_fn
         _Handler.snapshot = staticmethod(snapshot_fn)
         _Handler.state_path = app_state_path
         try:
@@ -115,6 +170,13 @@ class SyncServer:
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         return self.url()
+
+    def broadcast_status(self):
+        """Call after Lab progress changes so connected phones/PCs update in real time."""
+        try:
+            _broadcast("labstatus", self._snapshot())
+        except Exception:
+            pass
 
     def url(self):
         return "http://%s:%d" % (local_ip(), self.port)

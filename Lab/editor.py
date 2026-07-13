@@ -10,6 +10,15 @@ PY_BUILTIN = ("print len range int str float list dict set tuple enumerate sorte
               "map filter zip open input type bool reversed any all round").split()
 C_KW = ("int char void float double long short unsigned signed struct typedef return if else for "
         "while do switch case break continue sizeof const static #include #define NULL").split()
+CS_KW = ("using namespace class struct interface enum record public private protected internal static "
+         "void int long short byte char bool string double float decimal object var new return if else "
+         "for foreach while do switch case default break continue this base null true false try catch "
+         "finally throw abstract virtual override sealed readonly const async await get set delegate "
+         "event in out ref params yield is as typeof nameof").split()
+ASM_KW = ("mov add sub mul imul div idiv inc dec cmp test and or xor not neg shl shr sal sar push pop "
+          "call ret jmp je jne jz jnz jg jge jl jle ja jae jb jbe loop lea nop int syscall leave enter "
+          "eax ebx ecx edx esi edi esp ebp rax rbx rcx rdx rsi rdi rsp rbp rip al bl cl dl ah bh ch dh "
+          "section global extern db dw dd dq resb resw resd equ byte word dword qword ptr").split()
 
 
 class CodeEditor(tk.Frame):
@@ -36,6 +45,9 @@ class CodeEditor(tk.Frame):
         for name, col in (("kw", colors["kw"]), ("bi", colors["bi"]), ("str", colors["str"]),
                           ("com", colors["com"]), ("num", colors["num"]), ("fn", colors["fn"])):
             self.text.tag_configure(name, foreground=col)
+        # indentation guides: a faint mark at each 4-space stop, stacking into vertical guide lines
+        self.text.tag_configure("guide", background="#1b2740")
+        self.text.tag_lower("guide")
 
         self.text.bind("<KeyRelease>", self._changed)
         self.text.bind("<ButtonRelease>", self._cursor)
@@ -62,6 +74,7 @@ class CodeEditor(tk.Frame):
         self.text.edit_reset()
         self.text.mark_set("insert", "1.0")
         self._draw_gutter()
+        self._draw_guides()
         self._highlight()
 
     def get_code(self):
@@ -73,6 +86,7 @@ class CodeEditor(tk.Frame):
     # ---- events ----
     def _changed(self, _e=None):
         self._draw_gutter()
+        self._draw_guides()
         self._cursor()
         if self._hl_job:
             self.after_cancel(self._hl_job)
@@ -90,11 +104,30 @@ class CodeEditor(tk.Frame):
     def _enter(self, _e):
         line = self.text.get("insert linestart", "insert")
         indent = re.match(r"[ \t]*", line).group(0)
-        if line.rstrip().endswith(":"):
+        stripped = line.rstrip()
+        if self.language == "python" and stripped.endswith(":"):
+            indent += "    "
+        elif self.language in ("c", "csharp") and stripped.endswith("{"):
             indent += "    "
         self.text.insert("insert", "\n" + indent)
         self._draw_gutter()
+        self._draw_guides()
         return "break"
+
+    def _draw_guides(self):
+        """Faint vertical marks at each 4-space indentation stop — they stack into guide lines."""
+        t = self.text
+        t.tag_remove("guide", "1.0", "end")
+        total = int(t.index("end-1c").split(".")[0])
+        for ln in range(1, total + 1):
+            line = t.get("%d.0" % ln, "%d.end" % ln)
+            stripped = line.lstrip(" ")
+            if not stripped:
+                continue  # blank line — no guide
+            levels = (len(line) - len(stripped)) // 4
+            for lv in range(levels):
+                col = lv * 4
+                t.tag_add("guide", "%d.%d" % (ln, col), "%d.%d" % (ln, col + 1))
 
     def _draw_gutter(self):
         n = int(self.text.index("end-1c").split(".")[0])
@@ -116,14 +149,18 @@ class CodeEditor(tk.Frame):
                 s, e = m.start(group), m.end(group)
                 t.tag_add(tag, "1.0+%dc" % s, "1.0+%dc" % e)
 
-        kws = C_KW if self.language == "c" else PY_KW
-        apply("num", r"\b\d+\.?\d*\b")
-        apply("kw", r"(?<![\w#])(" + "|".join(re.escape(k) for k in kws) + r")(?![\w])")
-        if self.language != "c":
+        lang = self.language
+        kws = {"c": C_KW, "csharp": CS_KW, "asm": ASM_KW}.get(lang, PY_KW)
+        apply("num", r"\b\d+\.?\d*\b|\b0x[0-9a-fA-F]+\b")
+        apply("kw", r"(?<![\w#.])(" + "|".join(re.escape(k) for k in kws) + r")(?![\w])")
+        if lang == "python":
             apply("bi", r"\b(" + "|".join(PY_BUILTIN) + r")\b")
             apply("fn", r"(?:def|class)\s+(\w+)", 1)
-        apply("str", r"(\"[^\"\n]*\"|'[^'\n]*'|<[^>\n]+>)")
-        cpat = r"//[^\n]*" if self.language == "c" else r"#[^\n]*"
-        apply("com", cpat)
+        elif lang == "asm":
+            apply("fn", r"(?m)^[ \t]*(\w+):", 1)  # labels
+        # strings: include <...> only for C #include lines
+        apply("str", r"(\"[^\"\n]*\"|'[^'\n]*'" + (r"|<[^>\n]+>" if lang == "c" else "") + r")")
+        com = {"c": r"//[^\n]*", "csharp": r"//[^\n]*", "asm": r";[^\n]*"}.get(lang, r"#[^\n]*")
+        apply("com", com)
         for tag in ("str", "com"):
             t.tag_raise(tag)

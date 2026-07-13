@@ -112,6 +112,9 @@ class Lab(tk.Tk):
 
     def _save_state(self):
         json.dump(self.state, open(STATE_PATH, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        sync = getattr(self, "sync", None)
+        if sync:
+            sync.broadcast_status()  # push progress to connected phone/PC in real time
 
     def _today(self):
         return datetime.date.today().isoformat()
@@ -172,7 +175,7 @@ class Lab(tk.Tk):
         self.reset_btn = self._btn(tb, "⟲ Reset", self.act_reset); self.reset_btn.pack(side="left", padx=4)
         tk.Label(tb, text="lang", bg=C["panel"], fg=C["dim"], font=UI).pack(side="left", padx=(12, 4))
         self.lang_var = tk.StringVar(value="python")
-        self.lang_menu = ttk.Combobox(tb, textvariable=self.lang_var, values=["python", "c"], width=8, state="readonly")
+        self.lang_menu = ttk.Combobox(tb, textvariable=self.lang_var, values=["python", "c", "csharp", "asm"], width=9, state="readonly")
         self.lang_menu.pack(side="left")
         self.lang_menu.bind("<<ComboboxSelected>>", self._lang_changed)
 
@@ -371,7 +374,6 @@ class Lab(tk.Tk):
         course = self.courses[tid]
         L = course["lessons"][idx]
         ex = L.get("exercise")
-        is_c = tid == "c"
         self.test_btn.configure(text="✓ Run Tests" if ex else "✓ AI Check", state="normal")
         self.done_btn.configure(text="✓ Done" if self._lesson_done(L["id"]) else "Mark done", state="normal")
 
@@ -447,10 +449,17 @@ class Lab(tk.Tk):
         self._set_lesson(draw)
         if L.get("quiz"):
             self._update_check_status()
+        starters = {
+            "c": ("c", "#include <stdio.h>\n\nint main(void) {\n    // Experiment here — press ▶ Run.\n    return 0;\n}\n"),
+            "csharp": ("csharp", "using System;\n\nclass Program {\n    static void Main() {\n        // Experiment here — press ▶ Run.\n    }\n}\n"),
+            "asm": ("asm", "; Intel syntax (nasm). Link with gcc: declare a global main and you can use printf.\n"
+                           "global main\nextern printf\n\nsection .text\nmain:\n    ; experiment here — press ▶ Run\n    ret\n"),
+        }
         if ex:
             self._load_editor(ex["starter"], "python")
-        elif is_c:
-            self._load_editor("#include <stdio.h>\n\nint main(void) {\n    // Experiment here — press ▶ Run.\n    return 0;\n}\n", "c")
+        elif tid in starters:
+            lang, starter = starters[tid]
+            self._load_editor(starter, lang)
         else:
             self._load_editor("# Experiment here — press ▶ Run.\n", "python")
 
@@ -580,8 +589,10 @@ class Lab(tk.Tk):
         self._set_busy(True)
         lang = self.lang_var.get()
 
+        run_fn = {"c": runner.run_c, "csharp": runner.run_csharp, "asm": runner.run_asm}.get(lang, runner.run_python)
+
         def work():
-            res = runner.run_c(code) if lang == "c" else runner.run_python(code)
+            res = run_fn(code)
             self.after(0, lambda: self._show_run(res))
         threading.Thread(target=work, daemon=True).start()
 
