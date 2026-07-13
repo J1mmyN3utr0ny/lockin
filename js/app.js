@@ -9,6 +9,7 @@ import physique from "./modules/physique.js";
 import diet from "./modules/diet.js";
 import sleep from "./modules/sleep.js";
 import cyber from "./modules/cyber.js";
+import lessons from "./modules/lessons.js";
 import csmentor from "./modules/cs_mentor.js";
 import projects from "./modules/projects.js";
 import mathmod from "./modules/math.js";
@@ -36,9 +37,9 @@ function group(id, label, ico, subs) {
 }
 
 const bodyTab = group("body", "Body", "💪", [physique, diet, sleep]);
-const learnTab = group("learn", "Learn", "🧠", [cyber, csmentor, projects, mathmod, pet]);
+const learnTab = group("learn", "Learn", "🧠", [lessons, cyber, csmentor, projects, mathmod, pet]);
 const TABS = [today, bodyTab, learnTab, progress];
-const ALL = { today, body: bodyTab, learn: learnTab, progress, testmode, review, physique, diet, sleep, cyber, csmentor, projects, math: mathmod, pet };
+const ALL = { today, body: bodyTab, learn: learnTab, progress, testmode, review, physique, diet, sleep, cyber, lessons, csmentor, projects, math: mathmod, pet };
 
 function renderTabbar(activeId) {
   const nav = $("#tabbar");

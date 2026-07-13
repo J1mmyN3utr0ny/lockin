@@ -56,6 +56,7 @@ function defaults() {
     skills: {}, // trackId -> { level, milestones:{id:true} }
     decks: {}, // cardId -> { box, due }
     git: { lessons: {} }, // lessonId -> { done: true }
+    lessons: {}, // rich Learn-hub lesson id -> { done, date }
     reviews: {}, // weekNumber -> { score, total, date }
     body: { weights: {} }, // dateKey -> kg (bodyweight log)
     xp: 0,
