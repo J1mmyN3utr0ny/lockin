@@ -30,6 +30,7 @@ function defaults() {
   return {
     version: 1,
     createdAt: new Date().toISOString(),
+    updatedAt: 0, // ms of the last edit — drives last-write-wins sync between phone and PC
     startKey: PROGRAM_START, // program anchored to Jul 12, not first-run day
     settings: { debugDate: null, mode: "auto", onboarded: false, geminiKey: "", labUrl: "" },
     lab: { status: null, syncedAt: null }, // last synced snapshot from the desktop Lab
@@ -93,8 +94,26 @@ export function save() {
 export function getState() { return state; }
 export function update(mutator) {
   mutator(state);
+  state.updatedAt = Date.now();
   save();
   emit();
+}
+// Adopt a state blob pulled from the Lab sync hub. Keeps THIS device's connection settings and Lab
+// snapshot (labUrl / geminiKey are per-device), and does not bump updatedAt — we take the remote's.
+export function applyRemote(remote) {
+  if (!remote || typeof remote !== "object" || !remote.settings || remote.version === undefined) return false;
+  // Connection config is per-device; everything else (progress, xp, onboarded, …) syncs.
+  const keepLabUrl = state.settings.labUrl;
+  const keepKey = state.settings.geminiKey;
+  const keepLab = state.lab;
+  state = deepMerge(defaults(), remote);
+  state.settings.labUrl = keepLabUrl;
+  state.settings.geminiKey = keepKey;
+  state.lab = keepLab;
+  state.updatedAt = remote.updatedAt || Date.now();
+  save();
+  emit();
+  return true;
 }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 export function emit() { listeners.forEach((fn) => fn(state)); }

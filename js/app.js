@@ -247,8 +247,19 @@ function boot() {
     toast(`⚡ LEVEL UP — you're now Lv ${e.detail.level}!`, 3200);
   });
   if (!location.hash) location.hash = "#today";
+
+  // Desktop: the app is running on the PC next to the Lab. Point it at the local Lab by default so it
+  // auto-connects when the Lab is running. (Set labUrl WITHOUT bumping updatedAt — it's device config,
+  // not data — so a fresh PC install pulls the phone's data instead of pushing its empty state up.)
+  const isDesktop = window.matchMedia("(min-width: 900px) and (pointer: fine)").matches;
+  if (isDesktop) {
+    document.documentElement.classList.add("is-desktop");
+    if (!S.getState().settings.labUrl) { S.getState().settings.labUrl = "http://localhost:8765"; S.save(); }
+  }
+
   route();
   onboard();
+  Lab.startAppSync(); // keep phone and PC in step through the Lab hub
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

@@ -315,3 +315,28 @@ pre { background: #0a1120; border: 1px solid var(--line); border-radius: 10px; p
 .cmdrow:last-child { border-bottom: 0; }
 .cmdrow .kbd { flex: none; }
 .cmdrow .what { color: var(--muted); font-size: 12.5px; }
+
+/* ---- Desktop / big-screen layout ---------------------------------------------------------
+   The app is mobile-first; on a real screen give it a comfortable centred column, a card frame,
+   and room to breathe instead of a narrow phone strip. Triggered by width + a fine pointer. */
+@media (min-width: 900px) and (pointer: fine) {
+  :root { --maxw: 760px; }
+  body { background: radial-gradient(1200px 700px at 50% -10%, #121c2e 0%, var(--bg) 55%) fixed; }
+  #app {
+    margin: 18px auto 0; min-height: calc(100vh - 18px);
+    border: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: hidden; background: var(--bg);
+  }
+  #topbar { border-radius: 18px 18px 0 0; }
+  #view { padding: 22px 26px calc(var(--tabbar-h) + 34px); }
+  /* keep the nav bar aligned to the app frame, not the whole viewport */
+  #tabbar { border-radius: 0; }
+  .tab { font-size: 11.5px; }
+  .tab .ico { font-size: 22px; }
+  h1 { font-size: 25px; }
+  .grid2 { gap: 16px; }
+  .grid3 { gap: 14px; }
+  /* modal centres instead of sitting at the bottom on desktop */
+  .modal-back { align-items: center; }
+  .modal { border-radius: 18px; max-width: 560px; }
+}

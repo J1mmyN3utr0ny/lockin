@@ -25,15 +25,26 @@ export function taperTargets(dateKey) {
   return { wake: toHHMM(TARGET_WAKE), sleep: "23:30", inReset: false, dayIndex: programDay(dateKey) };
 }
 
-// ---- rotations (anchored to Jul 12) ----------------------------------------
+// ---- rotations -------------------------------------------------------------
+// The rotation index counts PRODUCTIVE days only: an off-day doesn't burn a lesson, it pauses the
+// rotation so the topic you'd have done simply rolls to your next working day — recycled, never
+// skipped. (Off-days strictly before this date shift everything after them back by one.)
+function rotationIndex(dateKey) {
+  const cal = programDay(dateKey);
+  const offBefore = S.getState().offDays.spent.filter(
+    (k) => S.daysBetween(S.PROGRAM_START, k) >= 0 && S.daysBetween(k, dateKey) > 0
+  ).length;
+  return Math.max(0, cal - offBefore);
+}
+
 export function cyberTrackFor(dateKey) {
-  return tracks[programDay(dateKey) % tracks.length];
+  return tracks[rotationIndex(dateKey) % tracks.length];
 }
 
 // Hebrew is the priority; weight the PET rotation toward it.
 const PET_ROTA = ["Hebrew vocab", "Hebrew sentences", "English vocab", "Hebrew vocab", "Math drills", "Hebrew vocab"];
 export function petFocusFor(dateKey) {
-  return PET_ROTA[programDay(dateKey) % PET_ROTA.length];
+  return PET_ROTA[rotationIndex(dateKey) % PET_ROTA.length];
 }
 
 function mathDone() {
