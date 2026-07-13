@@ -1,9 +1,9 @@
 // state.js — single source of truth, persisted to localStorage, with date helpers.
 
 export const KEY = "lockin.state.v1";
-export const PROGRAM_START = "2026-07-13"; // the whole program is anchored here (a Monday)
+export const PROGRAM_START = "2026-07-14"; // the whole program is anchored here (a Tuesday)
 export const SUMMER_END = "2026-09-30"; // extended: build through the capstone, then -> Test Mode
-export const COURSE_START = "2026-07-13"; // PET course runs Sun & Wed 09:00-14:00 (first one Wed Jul 15)
+export const COURSE_START = "2026-07-14"; // PET course runs Sun & Wed 09:00-14:00 (first one Wed Jul 15)
 export const EXAM_DATE = "2026-09-03"; // PET exam (Sep 2-3; anchored to the later day). Course ends here.
 export const PROJECT_START = "2026-09-05"; // the capstone kicks off 2 days after the exam
 export const WAKE_TARGET = "07:30";
@@ -82,10 +82,27 @@ function deepMerge(base, saved) {
 let state = defaults();
 const listeners = new Set();
 
+// One-time clean start: the program now begins PROGRAM_START (Jul 14). Wipe every day-keyed record
+// and all accumulated progress from before then — those days are gone, as if they never happened.
+// Device settings and profile are kept so you don't have to re-onboard or re-enter the Lab URL.
+const ANCHOR_RESET = "2026-07-14";
+function migrateToAnchor(st) {
+  if (st._anchorReset === ANCHOR_RESET) return;
+  st.days = {}; st.meals = {}; st.workoutLogs = {}; st.reviews = {}; st.reflections = [];
+  st.sleep = { logs: {} }; st.body = { weights: {} };
+  st.offDays = { spent: [] };
+  st.skills = {}; st.projects = {}; st.lessons = {}; st.decks = {};
+  st.cs = { milestones: {} }; st.math = { checklist: {} };
+  st.pet = { mathSolved: {}, sentencesDone: {} }; st.git = { lessons: {} };
+  st.xp = 0;
+  st._anchorReset = ANCHOR_RESET;
+  st.updatedAt = Date.now(); // treat the reset as the newest state so it propagates to the other device
+}
+
 export function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) state = deepMerge(defaults(), JSON.parse(raw));
+    if (raw) { state = deepMerge(defaults(), JSON.parse(raw)); migrateToAnchor(state); save(); }
   } catch (e) { /* corrupt storage -> fresh defaults */ }
   return state;
 }

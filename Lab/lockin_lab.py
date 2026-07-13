@@ -108,6 +108,10 @@ class Lab(tk.Tk):
                 base.update(json.load(open(STATE_PATH, encoding="utf-8")))
             except Exception:
                 pass
+        # one-time clean start (Jul 14): wipe pre-start Lab progress; keep the API key + code drafts.
+        if base.get("_anchorReset") != "2026-07-14":
+            base.update({"progress": {}, "solved": {}, "capstone": {}, "xp": 0,
+                         "history": [], "checks": {}, "activeDays": [], "_anchorReset": "2026-07-14"})
         return base
 
     def _save_state(self):

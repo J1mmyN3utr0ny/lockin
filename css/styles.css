@@ -382,9 +382,10 @@ pre { background: #0a1120; border: 1px solid var(--line); border-radius: 10px; p
 .hs-line { position: absolute; top: 34px; left: 50%; width: 2px; height: 150px; background: repeating-linear-gradient(var(--line) 0 6px, transparent 6px 12px); }
 .hs-pkt { position: absolute; left: 12%; width: 76%; text-align: center; font-size: 12px; font-weight: 700; padding: 4px 0; border-radius: 6px; opacity: 0; }
 .hs-pkt.p1 { top: 52px; color: var(--accent-2); animation: hsMove 6s linear infinite; }
-.hs-pkt.p2 { top: 88px; color: var(--gold); animation: hsMove 6s linear infinite 1.5s; }
+.hs-pkt.p2 { top: 88px; color: var(--gold); animation: hsMoveBack 6s linear infinite 1.5s; }
 .hs-pkt.p3 { top: 124px; color: var(--accent-2); animation: hsMove 6s linear infinite 3s; }
 .hs-pkt.p4 { top: 160px; color: var(--good); animation: hsFade 6s linear infinite 4.4s; }
 @keyframes hsMove { 0%{opacity:0;transform:translateX(-30%)} 8%{opacity:1} 20%{opacity:1;transform:translateX(30%)} 26%{opacity:0;transform:translateX(30%)} 100%{opacity:0} }
+@keyframes hsMoveBack { 0%{opacity:0;transform:translateX(30%)} 8%{opacity:1} 20%{opacity:1;transform:translateX(-30%)} 26%{opacity:0;transform:translateX(-30%)} 100%{opacity:0} }
 @keyframes hsFade { 0%{opacity:0;transform:scale(.9)} 6%{opacity:1;transform:scale(1)} 22%{opacity:1} 30%{opacity:0} 100%{opacity:0} }
 @media (prefers-reduced-motion: reduce) { .hs-pkt { animation: none !important; opacity: 1 !important; } }
