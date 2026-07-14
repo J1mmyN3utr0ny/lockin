@@ -1,5 +1,5 @@
 /* LockIn service worker — offline-first precache of the app shell. */
-const VERSION = "lockin-v21";
+const VERSION = "lockin-v22";
 const ASSETS = [
   "./",
   "./index.html",
@@ -30,6 +30,7 @@ const ASSETS = [
   "./js/modules/pet.js",
   "./js/modules/cyber.js",
   "./js/modules/lessons.js",
+  "./js/modules/lesson_gen.js",
   "./js/modules/offday.js",
   "./js/modules/testmode.js",
   "./js/modules/review.js",
@@ -45,7 +46,8 @@ const ASSETS = [
   "./js/data/gama_notes.js",
   "./js/data/git_lessons.js",
   "./js/data/reading.js",
-  "./js/data/lessons_content.js"
+  "./js/data/lessons_content.js",
+  "./js/data/lesson_topics.js"
 ];
 
 self.addEventListener("install", (e) => {

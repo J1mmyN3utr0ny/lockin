@@ -1,7 +1,10 @@
 // today.js — the day's routine as checkable timeblocks. Free time is protected.
+// A block opens its tab with a full-card tap (no tiny links); ✏️ Adjust-day mode
+// reorders the movable parts of the day — grouped blocks (travel→gym→travel) move
+// as one, anchored blocks (wake, course, wind-down, sleep) stay put.
 import * as S from "../state.js";
 import { esc, barHTML, refresh, toast, confetti, buzz, openModal } from "../ui.js";
-import { buildDay, taskBlockIds } from "../schedule.js";
+import { buildDay, taskBlockIds, unitize, moveUnit, resetDayOrder, hasCustomOrder } from "../schedule.js";
 import { openOffDayFlow, isOffDay } from "./offday.js";
 import { startFocus } from "../focus.js";
 
@@ -13,6 +16,8 @@ const CAT = {
   wind: { emoji: "🌆", color: "#94a3b8" }, leet: { emoji: "🧩", color: "#a78bfa" },
   review: { emoji: "📋", color: "#22d3ee" }, travel: { emoji: "🚗", color: "#94a3b8" }
 };
+
+let editMode = false; // ✏️ Adjust-day mode (session-only)
 
 function toggle(dateKey, id, taskIds) {
   let nowOn = false;
@@ -78,7 +83,7 @@ function weekStrip(todayKey) {
     const isToday = k === todayKey;
     const isFuture = S.daysBetween(todayKey, k) > 0;
     const st = dayStatus(k);
-    html += `<div class="wd ${isToday ? "today" : ""} ${isFuture ? "future" : ""} ${st}" data-day="${k}" style="cursor:pointer">
+    html += `<div class="wd ${isToday ? "today" : ""} ${isFuture ? "future" : ""} ${st}" data-day="${k}" title="tap for this day's plan" style="cursor:pointer">
       <div class="d">${S.DAY_NAMES[i].slice(0, 3)}</div>
       <div class="n">${Number(k.slice(8))}</div>
       <div class="dot"></div>
@@ -99,7 +104,7 @@ function previewDay(dateKey) {
         <div style="width:4px; align-self:stretch; border-radius:3px; background:${c.color}; flex:none"></div>
         <div class="time" style="min-width:46px; color:var(--accent-2); font-weight:800; font-size:13px">${esc(b.time)}</div>
         <div style="flex:1; min-width:0">
-          <div style="font-weight:700; font-size:13.5px">${esc(b.title)}</div>
+          <div style="font-weight:700; font-size:13.5px">${esc(b.title)} ${b.fixed ? `<span class="dim" style="font-weight:400">🔒</span>` : ""}</div>
           ${b.sub ? `<div class="small muted">${esc(b.sub)}</div>` : ""}
         </div>
       </div>`;
@@ -115,6 +120,66 @@ function previewDay(dateKey) {
     <button class="btn block" data-close style="margin-top:12px">Close</button>`);
   if (canPrev) m.querySelector("#pv-prev").addEventListener("click", () => previewDay(S.addDays(dateKey, -1)));
   if (canNext) m.querySelector("#pv-next").addEventListener("click", () => previewDay(S.addDays(dateKey, 1)));
+}
+
+// ---- the two block renderings ------------------------------------------------
+
+function blocksHTML(day, rec, nowI) {
+  const focusable = new Set(["math", "cs", "cyber", "pet", "gym", "leet"]);
+  return day.blocks.map((b, i) => {
+    const done = !!rec.blocks[b.id];
+    const c = CAT[b.cat] || CAT.free;
+    const canFocus = !b.free && !done && focusable.has(b.cat);
+    const tap = !!b.link && !b.free;
+    return `
+      <div class="block ${done ? "done" : ""} ${b.free ? "free" : ""} ${i === nowI ? "now" : ""} ${tap ? "tap" : ""}"
+           style="--cat:${c.color}" data-id="${b.id}" ${tap ? `data-go="${b.link}" role="button" tabindex="0"` : ""}>
+        <div class="time">${esc(b.time)}</div>
+        <div class="body">
+          <div class="t">${esc(b.title)}</div>
+          ${b.sub ? `<div class="s">${esc(b.sub)}</div>` : ""}
+          ${canFocus ? `<div class="row" style="margin-top:7px"><button class="btn sm" data-focus="${b.id}|${i}">🔒 Focus</button></div>` : ""}
+        </div>
+        ${tap ? `<span class="go">›</span>` : ""}
+        ${b.free ? `<span class="cat emoji">${c.emoji}</span>`
+          : `<div class="chk" data-chk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`}
+      </div>`;
+  }).join("");
+}
+
+function editHTML(day, key) {
+  const units = unitize(day.blocks);
+  return `
+    <div class="card tight" style="border-color:rgba(79,140,255,.4); background:linear-gradient(180deg,rgba(79,140,255,.08),var(--card))">
+      <b>✏️ Adjust your day</b>
+      <p class="small muted" style="margin:4px 0 0">Move blocks with the arrows — times re-flow on their own. 🔒 blocks are anchored and can't move; chained blocks (like the gym trip) move together.</p>
+    </div>
+    ${units.map((u, i) => {
+      const canUp = !u.fixed && i > 0 && !units[i - 1].fixed;
+      const canDn = !u.fixed && i < units.length - 1 && !units[i + 1].fixed;
+      const c = CAT[u.blocks[0].cat] || CAT.free;
+      return `
+      <div class="unit ${u.fixed ? "fixed" : ""}" style="--cat:${c.color}">
+        <div class="unit-rows">
+          ${u.blocks.map((b) => `
+            <div class="unit-row">
+              <span class="time">${esc(b.time)}</span>
+              <span class="ut">${esc(b.title)}</span>
+            </div>`).join("")}
+          ${u.blocks.length > 1 ? `<div class="small dim" style="margin-top:3px">⛓️ these move together</div>` : ""}
+        </div>
+        ${u.fixed
+          ? `<div class="unit-lock" title="anchored — can't move">🔒</div>`
+          : `<div class="unit-btns">
+               <button class="ubtn" data-mv="${u.id}|-1" ${canUp ? "" : "disabled"} aria-label="move earlier">▲</button>
+               <button class="ubtn" data-mv="${u.id}|1" ${canDn ? "" : "disabled"} aria-label="move later">▼</button>
+             </div>`}
+      </div>`;
+    }).join("")}
+    <div class="row" style="gap:8px; margin-top:12px">
+      <button class="btn primary" id="edit-done" style="flex:1">✓ Done adjusting</button>
+      ${hasCustomOrder(key) ? `<button class="btn ghost" id="edit-reset">Reset order</button>` : ""}
+    </div>`;
 }
 
 export default {
@@ -154,6 +219,7 @@ export default {
       return;
     }
 
+    const adjustable = unitize(day.blocks).some((u) => !u.fixed);
     view.innerHTML = `
       <div class="row between">
         <div>
@@ -163,9 +229,9 @@ export default {
         <div class="ring" style="--p:${Math.round(pct)}; position:relative"><span>${doneCount}/${taskIds.length}</span></div>
       </div>
       ${weekStrip(key)}
-      <div class="row between" style="margin:-2px 2px 10px">
-        <span class="small dim">Tap any day to see its plan</span>
-        <button class="btn sm ghost" id="preview-day">📅 Preview any day</button>
+      <div class="row" style="gap:8px; margin:-2px 2px 12px">
+        ${adjustable ? `<button class="btn sm ${editMode ? "primary" : "ghost"}" id="edit-day" style="flex:1">${editMode ? "✓ Done" : "✏️ Adjust day"}</button>` : ""}
+        <button class="btn sm ghost" id="preview-day" style="flex:1">📅 Preview any day</button>
       </div>
       ${resetBanner}
       <div style="margin:6px 2px 12px">${barHTML(pct)}</div>
@@ -178,48 +244,48 @@ export default {
       </div>
       ${pct >= 100 ? `<div class="card center" style="border-color:rgba(52,211,153,.4)"><b class="emoji">🔥</b> Full day cleared. That's how the summer gets won.</div>` : ""}`;
 
-    const nowI = nowIndex(day.blocks);
-    const focusable = new Set(["math", "cs", "cyber", "pet", "gym", "leet"]);
     const wrap = view.querySelector("#blocks");
-    wrap.innerHTML = day.blocks.map((b, i) => {
-      const done = !!rec.blocks[b.id];
-      const c = CAT[b.cat] || CAT.free;
-      const canFocus = !b.free && !done && focusable.has(b.cat);
-      return `
-        <div class="block ${done ? "done" : ""} ${b.free ? "free" : ""} ${i === nowI ? "now" : ""}" style="--cat:${c.color}" data-id="${b.id}">
-          <div class="time">${esc(b.time)}</div>
-          <div class="body">
-            <div class="t">${esc(b.title)}</div>
-            ${b.sub ? `<div class="s">${esc(b.sub)}</div>` : ""}
-            <div class="row" style="gap:12px; margin-top:2px">
-              ${b.link && !b.free ? `<a class="small" style="color:var(--accent)" href="${b.link}">Open →</a>` : ""}
-              ${canFocus ? `<button class="btn sm" data-focus="${b.id}|${i}" style="padding:3px 9px">🔒 Focus</button>` : ""}
-            </div>
-          </div>
-          ${b.free ? `<span class="cat emoji">${c.emoji}</span>`
-            : `<div class="chk" data-chk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`}
-        </div>`;
-    }).join("");
 
-    wrap.querySelectorAll("[data-chk]").forEach((el) =>
-      el.addEventListener("click", (e) => { e.stopPropagation(); toggle(key, el.dataset.chk, taskIds); }));
-    wrap.querySelectorAll("[data-focus]").forEach((el) =>
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const [id, iStr] = el.dataset.focus.split("|");
-        const i = Number(iStr);
-        const b = day.blocks[i];
-        startFocus({
-          title: b.title,
-          minutes: blockMinutes(day.blocks, i),
-          labGate: b.cat === "cyber" || b.cat === "leet",
-          leetOnly: b.cat === "leet",
-          onComplete: ({ escapes }) => {
-            if (!S.dayRec(key).blocks[id]) toggle(key, id, taskIds);
-            toast(escapes === 0 ? "Locked in the whole time. 🔒 That's the standard." : "Event done — fewer escapes next time.");
-          }
-        });
+    if (editMode) {
+      wrap.innerHTML = editHTML(day, key);
+      wrap.querySelectorAll("[data-mv]").forEach((b) => b.addEventListener("click", () => {
+        const [id, d] = b.dataset.mv.split("|");
+        if (moveUnit(key, id, Number(d))) { buzz(); refresh(); }
       }));
+      wrap.querySelector("#edit-done").addEventListener("click", () => { editMode = false; refresh(); });
+      const rst = wrap.querySelector("#edit-reset");
+      if (rst) rst.addEventListener("click", () => { resetDayOrder(key); toast("Back to the default plan."); refresh(); });
+    } else {
+      const nowI = nowIndex(day.blocks);
+      wrap.innerHTML = blocksHTML(day, rec, nowI);
+
+      wrap.querySelectorAll("[data-go]").forEach((el) => {
+        el.addEventListener("click", () => { location.hash = el.dataset.go; });
+        el.addEventListener("keydown", (e) => { if (e.key === "Enter") location.hash = el.dataset.go; });
+      });
+      wrap.querySelectorAll("[data-chk]").forEach((el) =>
+        el.addEventListener("click", (e) => { e.stopPropagation(); toggle(key, el.dataset.chk, taskIds); }));
+      wrap.querySelectorAll("[data-focus]").forEach((el) =>
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const [id, iStr] = el.dataset.focus.split("|");
+          const i = Number(iStr);
+          const b = day.blocks[i];
+          startFocus({
+            title: b.title,
+            minutes: blockMinutes(day.blocks, i),
+            labGate: b.cat === "cyber" || b.cat === "leet",
+            leetOnly: b.cat === "leet",
+            onComplete: ({ escapes }) => {
+              if (!S.dayRec(key).blocks[id]) toggle(key, id, taskIds);
+              toast(escapes === 0 ? "Locked in the whole time. 🔒 That's the standard." : "Event done — fewer escapes next time.");
+            }
+          });
+        }));
+    }
+
+    const editBtn = view.querySelector("#edit-day");
+    if (editBtn) editBtn.addEventListener("click", () => { editMode = !editMode; refresh(); });
     view.querySelector("#take-off").addEventListener("click", () => openOffDayFlow(key));
     view.querySelectorAll("[data-day]").forEach((el) =>
       el.addEventListener("click", () => previewDay(el.dataset.day)));

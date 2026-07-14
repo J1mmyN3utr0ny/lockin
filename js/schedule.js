@@ -59,19 +59,19 @@ const L = { food: "#body/diet", gym: "#body/physique", cyber: "#learn/cyber",
 // Explicit travel time so the day doesn't silently run late. One-way minutes (tweak here if they
 // change): home↔gym and home↔course are drives; the gym is a short walk from the PET course.
 const TRAVEL = { gym: 20, course: 30, courseToGym: 10 };
-function travelBlock(id, time, mins, title, mode = "drive") {
+function travelBlock(id, time, mins, title, mode = "drive", group) {
   const sub = mode === "walk"
     ? `A ${mins}-minute walk — head straight over.`
     : `About ${mins} min door-to-door — leave on time so nothing runs late.`;
-  return { id, time, cat: "travel", title, sub };
+  return { id, time, cat: "travel", title, sub, group };
 }
 
 function gymBlock(time, dow) {
   const id = weekPlan[dow];
-  if (!id) return { id: "gym", time, cat: "gym", title: "Rest / mobility", sub: "No lift scheduled — walk, stretch, recover.", link: L.gym };
+  if (!id) return { id: "gym", time, cat: "gym", title: "Rest / mobility", sub: "No lift scheduled — walk, stretch, recover.", link: L.gym, group: "gym" };
   const d = dayById(id);
   const optional = dow === 5 ? " · optional — skip guilt-free if the week was heavy" : "";
-  return { id: "gym", time, cat: "gym", title: `Gym · ${d.name}`, sub: `${d.focus} — same workout as in Gymmy${optional}`, link: L.gym };
+  return { id: "gym", time, cat: "gym", title: `Gym · ${d.name}`, sub: `${d.focus} — same workout as in Gymmy${optional}`, link: L.gym, group: "gym" };
 }
 
 function studyMathBlock(time) {
@@ -83,7 +83,7 @@ function studyMathBlock(time) {
 function deepWorkDay(dateKey, dow) {
   const t = cyberTrackFor(dateKey);
   return [
-    { id: "wake", time: "07:30", cat: "sleep", title: "Wake · water · 10 min daylight", sub: "Sunlight + light mobility anchors your body clock.", link: L.sleep },
+    { id: "wake", time: "07:30", cat: "sleep", title: "Wake · water · 10 min daylight", sub: "Sunlight + light mobility anchors your body clock.", link: L.sleep, fixed: true },
     { id: "breakfast", time: "08:00", cat: "food", title: "Breakfast — ~35g protein", sub: "Eat even if not hungry. It's a checklist, not a craving.", link: L.food },
     studyMathBlock("08:30"),
     { id: "csdeep", time: "10:15", cat: "cs", title: "CS project — deep work", sub: "The 'start from an empty file' muscle. One milestone at a time.", link: L.cs },
@@ -96,59 +96,59 @@ function deepWorkDay(dateKey, dow) {
       : { id: "petpractice", time: "15:15", cat: "pet", title: `PET practice — ${petFocusFor(dateKey)}`, sub: "One focused set. Understand the path, not just the answer.", link: L.pet },
     { id: "free", time: "16:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
     { id: "snack", time: "19:00", cat: "food", title: "Snack — pre-gym fuel", sub: "~25g protein about an hour before you lift.", link: L.food },
-    travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym"),
+    travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("20:00", dow),
-    travelBlock("homegym", "21:15", TRAVEL.gym, "Head home"),
+    travelBlock("homegym", "21:15", TRAVEL.gym, "Head home", "drive", "gym"),
     { id: "dinner", time: "21:40", cat: "food", title: "Dinner — biggest meal, ~45g protein", sub: "Post-workout — the meal that builds the physique.", link: L.food },
-    { id: "wind", time: "22:45", cat: "wind", title: "Wind-down — screens dim, prep tomorrow", sub: "Lay out gym clothes, set breakfast.", link: L.sleep },
-    { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "Protecting this is the whole reset.", link: L.sleep }
+    { id: "wind", time: "22:45", cat: "wind", title: "Wind-down — screens dim, prep tomorrow", sub: "Lay out gym clothes, set breakfast.", link: L.sleep, fixed: true },
+    { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "Protecting this is the whole reset.", link: L.sleep, fixed: true }
   ];
 }
 
 function courseDay(dateKey, dow) {
   const t = cyberTrackFor(dateKey);
   return [
-    { id: "wake", time: "07:00", cat: "sleep", title: "Wake · water · quick breakfast", sub: "Course day — up a little earlier to make the 9:00 start.", link: L.sleep },
-    { id: "commute", time: "08:15", cat: "travel", title: "Head to PET course", sub: `About ${TRAVEL.course} min — bring water + a snack.` },
-    { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Sundays & Wednesdays. This is your main PET engine.", link: L.pet },
-    { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class.", link: L.food },
-    travelBlock("homecourse", "14:40", TRAVEL.course, "Head home"),
+    { id: "wake", time: "07:00", cat: "sleep", title: "Wake · water · quick breakfast", sub: "Course day — up a little earlier to make the 9:00 start.", link: L.sleep, fixed: true },
+    { id: "commute", time: "08:15", cat: "travel", title: "Head to PET course", sub: `About ${TRAVEL.course} min — bring water + a snack.`, fixed: true, group: "course" },
+    { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Sundays & Wednesdays. This is your main PET engine.", link: L.pet, fixed: true, group: "course" },
+    { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class.", link: L.food, fixed: true, group: "course" },
+    travelBlock("homecourse", "14:40", TRAVEL.course, "Head home", "drive", "course"),
     { id: "leet", time: "15:30", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
     { id: "light", time: "16:15", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
     { id: "homework", time: "17:15", cat: "pet", title: "PET homework — from today's class", sub: "Do it while it's fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
     { id: "review", time: "18:00", cat: "pet", title: "Review notes + vocab", sub: "Lock in today's course material.", link: L.pet },
-    { id: "dinner", time: "18:40", cat: "food", title: "Dinner — ~45g protein", sub: "Fuel for tonight's session — eat well, you lift at 20:00.", link: L.food },
-    travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym"),
+    { id: "dinner", time: "18:40", cat: "food", title: "Dinner — ~45g protein", sub: "Fuel for tonight's session — eat well before you lift.", link: L.food },
+    travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("20:00", dow),
-    travelBlock("homegym", "21:15", TRAVEL.gym, "Head home"),
+    travelBlock("homegym", "21:15", TRAVEL.gym, "Head home", "drive", "gym"),
     { id: "free", time: "21:40", cat: "free", free: true, title: "FREE TIME — protected", sub: "Post-gym shake, then recover. Big day done." },
-    { id: "wind", time: "22:45", cat: "wind", title: "Wind-down", sub: "Prep for tomorrow.", link: L.sleep },
-    { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "", link: L.sleep }
+    { id: "wind", time: "22:45", cat: "wind", title: "Wind-down", sub: "Prep for tomorrow.", link: L.sleep, fixed: true },
+    { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "", link: L.sleep, fixed: true }
   ];
 }
 
 function fridayDay(dateKey, dow) {
   const wk = S.weekOf(dateKey);
   return [
-    { id: "wake", time: "08:30", cat: "sleep", title: "Relaxed wake + breakfast", sub: "End-of-week day — but keep the wake time honest.", link: L.sleep },
+    { id: "wake", time: "08:30", cat: "sleep", title: "Relaxed wake + breakfast", sub: "End-of-week day — but keep the wake time honest.", link: L.sleep, fixed: true },
     { id: "review", time: "10:30", cat: "review", title: `📋 Weekly Review — Week ${wk}`, sub: `Cumulative test: everything you've learned through week ${wk}. Beat last week's score.`, link: "#review" },
     { id: "labreview", time: "11:30", cat: "leet", title: "Lab: re-solve a past problem", sub: "Pick an earlier LeetCode/DSA exercise and redo it from scratch — proof it stuck.", link: L.cyber },
-    travelBlock("togym", "12:15", TRAVEL.gym, "Head to the gym"),
+    travelBlock("togym", "12:15", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("12:40", dow),
-    travelBlock("homegym", "13:50", TRAVEL.gym, "Head home"),
+    travelBlock("homegym", "13:50", TRAVEL.gym, "Head home", "drive", "gym"),
     { id: "free1", time: "14:15", cat: "free", free: true, title: "FREE — friends / rest", sub: "You reviewed the week. Enjoy it." },
-    { id: "dinner", time: "19:00", cat: "food", title: "Family dinner — EAT BIG", sub: "Your best-eating day. Seconds encouraged — this fuels growth.", link: L.food },
+    { id: "dinner", time: "19:00", cat: "food", title: "Family dinner — EAT BIG", sub: "Your best-eating day. Seconds encouraged — this fuels growth.", link: L.food, fixed: true },
     { id: "free2", time: "20:30", cat: "free", free: true, title: "FREE evening", sub: "" },
-    { id: "sleep", time: "00:00", cat: "sleep", title: "Sleep (a bit later is OK)", sub: "Don't drift too far — Sunday is a course day.", link: L.sleep }
+    { id: "sleep", time: "00:00", cat: "sleep", title: "Sleep (a bit later is OK)", sub: "Don't drift too far — Sunday is a course day.", link: L.sleep, fixed: true }
   ];
 }
 
 function shabbatDay(dateKey) {
   return [
-    { id: "rest", time: "—", cat: "free", free: true, title: "REST DAY — Shabbat", sub: "The built-in light day. No goals required. This does NOT cost an off-day token." },
-    { id: "flash", time: "11:00", cat: "cyber", title: "Optional: 10-min flashcards", sub: "Only if you feel like it.", link: L.cyber },
-    { id: "dinner", time: "19:00", cat: "food", title: "Dinner — hit your protein", sub: "Recovery still needs food.", link: L.food },
-    { id: "sleep", time: "23:30", cat: "sleep", title: "Protect sleep — Sunday is a course day", sub: "Back on the 07:00 wake tomorrow.", link: L.sleep }
+    { id: "rest", time: "—", cat: "free", free: true, title: "REST DAY — Shabbat", sub: "The built-in light day. No goals required. This does NOT cost an off-day token.", fixed: true },
+    { id: "flash", time: "11:00", cat: "cyber", title: "Optional: 10-min flashcards", sub: "Only if you feel like it.", link: L.cyber, fixed: true },
+    { id: "dinner", time: "19:00", cat: "food", title: "Dinner — hit your protein", sub: "Recovery still needs food.", link: L.food, fixed: true },
+    { id: "sleep", time: "23:30", cat: "sleep", title: "Protect sleep — Sunday is a course day", sub: "Back on the 07:00 wake tomorrow.", link: L.sleep, fixed: true }
   ];
 }
 
@@ -161,7 +161,112 @@ export function buildDay(dateKey) {
   else if (type === "friday") { blocks = fridayDay(dateKey, dow); label = "Friday — Weekly Review"; }
   else if (type === "shabbat") { blocks = shabbatDay(dateKey); label = "Shabbat — rest"; }
   else { blocks = deepWorkDay(dateKey, dow); label = "Deep-work day"; }
-  return { type, label, taper, blocks };
+  return { type, label, taper, blocks: applyDayOrder(dateKey, blocks) };
+}
+
+// ---- movable units & per-day reordering -------------------------------------
+// A "unit" is the smallest thing the user can move: one block, or an inseparable
+// group that travels together (drive→gym→drive; the PET-course cluster). Units
+// flagged `fixed` (wake, wind-down, sleep, the course, family dinner) anchor the
+// day. Movable units may be reordered BETWEEN two anchors; times are then
+// recomputed from block durations, so everything still meets each anchor exactly.
+
+function minOf(t) { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+
+// Group consecutive blocks that share a `group` tag into single units.
+export function unitize(blocks) {
+  const units = [];
+  for (const b of blocks) {
+    const last = units[units.length - 1];
+    if (b.group && last && last.group === b.group) { last.blocks.push(b); last.fixed = last.fixed || !!b.fixed; }
+    else units.push({ id: b.id, group: b.group || null, fixed: !!b.fixed, blocks: [b] });
+  }
+  return units;
+}
+
+// Duration of every block = gap to the next timed block (day order). The value is
+// derived from the canonical times, so segment totals always equal the anchor gap.
+function blockDurations(blocks) {
+  const durs = new Map();
+  for (let i = 0; i < blocks.length; i++) {
+    const t = minOf(blocks[i].time);
+    let d = 45;
+    if (t !== null) {
+      for (let j = i + 1; j < blocks.length; j++) {
+        const n = minOf(blocks[j].time);
+        if (n !== null) { d = n - t; if (d <= 0) d += 1440; break; }
+      }
+    }
+    durs.set(blocks[i], d);
+  }
+  return durs;
+}
+
+// Apply the user's saved order for this date (if any): reorder movable units
+// within their segment, then re-time everything off the durations.
+function applyDayOrder(dateKey, blocks) {
+  const saved = (S.getState().dayOrders || {})[dateKey];
+  if (!saved || !saved.length) return blocks;
+  if (blocks.some((b) => minOf(b.time) === null)) return blocks; // untimed day (Shabbat) — nothing to move
+  const units = unitize(blocks);
+  const durs = blockDurations(blocks);
+
+  // Reorder each run of movable units (a "segment") by the saved id order;
+  // ids the save doesn't know keep their canonical order (stable sort).
+  const ordered = [];
+  let seg = [];
+  const flush = () => {
+    seg.sort((a, b) => {
+      const ia = saved.indexOf(a.id), ib = saved.indexOf(b.id);
+      return (ia === -1 ? 1e9 : ia) - (ib === -1 ? 1e9 : ib);
+    });
+    ordered.push(...seg);
+    seg = [];
+  };
+  for (const u of units) {
+    if (u.fixed) { flush(); ordered.push(u); }
+    else seg.push(u);
+  }
+  flush();
+
+  // Re-time: movable blocks stack from the cursor; fixed anchors resync it.
+  let cursor = minOf(units[0].blocks[0].time);
+  const out = [];
+  for (const u of ordered) {
+    if (u.fixed) {
+      for (const b of u.blocks) out.push(b);
+      const lastB = u.blocks[u.blocks.length - 1];
+      cursor = minOf(lastB.time) + durs.get(lastB);
+    } else {
+      for (const b of u.blocks) {
+        out.push({ ...b, time: toHHMM(cursor) });
+        cursor += durs.get(b);
+      }
+    }
+  }
+  return out;
+}
+
+export function hasCustomOrder(dateKey) { return !!((S.getState().dayOrders || {})[dateKey] || []).length; }
+export function resetDayOrder(dateKey) { S.update((st) => { if (st.dayOrders) delete st.dayOrders[dateKey]; }); }
+
+// Move the unit `unitId` one step earlier (-1) or later (+1) in the day.
+// Returns false when the move would cross a fixed anchor (or nothing to swap with).
+export function moveUnit(dateKey, unitId, dir) {
+  const units = unitize(buildDay(dateKey).blocks);
+  const i = units.findIndex((u) => u.id === unitId);
+  const j = i + dir;
+  if (i < 0 || units[i].fixed || j < 0 || j >= units.length || units[j].fixed) return false;
+  [units[i], units[j]] = [units[j], units[i]];
+  const ids = units.filter((u) => !u.fixed).map((u) => u.id);
+  S.update((st) => {
+    if (!st.dayOrders) st.dayOrders = {};
+    st.dayOrders[dateKey] = ids;
+    for (const k of Object.keys(st.dayOrders)) {
+      if (S.daysBetween(k, dateKey) > 7) delete st.dayOrders[k]; // prune stale days
+    }
+  });
+  return true;
 }
 
 // How many non-free blocks a day has, for progress math.

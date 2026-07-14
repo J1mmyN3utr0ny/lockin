@@ -48,6 +48,8 @@ function defaults() {
     sleep: { logs: {} }, // logs[key] = { sleep:"03:30", wake:"14:00" }
     meals: {}, // meals[key] = { slotId:true }
     days: {}, // days[key] = { blocks:{id:true}, offDay:false, note:"" }
+    dayOrders: {}, // dayOrders[key] = [movable unit ids in the user's chosen day order]
+    customLessons: [], // AI-generated Learn-hub lessons (see modules/lesson_gen.js)
     workoutLogs: {}, // [key] = { dayId, ex:{ exId:[{w,r}] } }
     cs: { milestones: {} }, // id -> { status, hintLevel, reflection }
     projects: {}, // resume-project id -> { stages:{i:{done,hintLevel}}, ship:{i:true}, bullets, reflection, rebuilt }

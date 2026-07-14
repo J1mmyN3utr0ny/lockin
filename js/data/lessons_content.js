@@ -11,6 +11,11 @@ export const lessonTracks = [
   { id: "low", name: "Low-level & memory", icon: "🧠", blurb: "How a program really lives in memory — the heart of the GAMA research track." },
   { id: "asm", name: "Assembly (x86)", icon: "⚙️", blurb: "The language your CPU speaks. You mostly need to READ it — and know the terms cold." },
   { id: "oop", name: "OOP & C#", icon: "🎯", blurb: "The object-oriented thinking GAMA's C# workshop is built to test." },
+  // Tracks below start empty by design — grow them on demand with ➕ New AI lesson.
+  { id: "linux", name: "Linux", icon: "🐧", blurb: "The terminal, files, processes and permissions — cyber's home turf." },
+  { id: "c", name: "C language", icon: "🔧", blurb: "Pointers, memory and the machine — the language under everything." },
+  { id: "win", name: "Windows & CMD", icon: "🖥️", blurb: "Processes, the registry and the command line on the other big OS." },
+  { id: "dsa", name: "DSA / LeetCode", icon: "🧮", blurb: "The patterns behind the daily problems — recognize them on sight." },
 ];
 
 // --- reusable SVG helpers (as strings, inlined into the DOM) -----------------------------------
