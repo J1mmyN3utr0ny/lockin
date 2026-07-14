@@ -1,5 +1,5 @@
 /* LockIn service worker — offline-first precache of the app shell. */
-const VERSION = "lockin-v22";
+const VERSION = "lockin-v23";
 const ASSETS = [
   "./",
   "./index.html",
@@ -31,6 +31,7 @@ const ASSETS = [
   "./js/modules/cyber.js",
   "./js/modules/lessons.js",
   "./js/modules/lesson_gen.js",
+  "./js/modules/manager.js",
   "./js/modules/offday.js",
   "./js/modules/testmode.js",
   "./js/modules/review.js",

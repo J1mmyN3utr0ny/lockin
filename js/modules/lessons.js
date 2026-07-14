@@ -4,7 +4,7 @@
 // lessons, every track can grow on demand with AI-generated lessons (see lesson_gen.js).
 import * as S from "../state.js";
 import { esc, refresh, toast, confetti, buzz } from "../ui.js";
-import { mdLite } from "../ai.js";
+import { mdLite, openTutor } from "../ai.js";
 import { lessonTracks, lessons } from "../data/lessons_content.js";
 import { openGenerator, deleteCustomLesson } from "./lesson_gen.js";
 
@@ -95,7 +95,8 @@ function renderReader(view, l) {
       ${l.sections.map(sectionHTML).join("")}
       ${quizHTML(l)}
     </div>
-    <button class="btn ${done ? "good" : "primary"} block" id="l-done" style="margin-top:16px">
+    <button class="btn ghost block sm" id="l-deeper" style="margin-top:14px">🤖 Go deeper — ask the AI about this lesson</button>
+    <button class="btn ${done ? "good" : "primary"} block" id="l-done" style="margin-top:8px">
       ${done ? "✓ Completed — read again anytime" : "Mark lesson complete"}
     </button>
     ${l.ai ? `<button class="btn ghost block sm" id="l-del" style="margin-top:8px">🗑 Delete this AI lesson</button>` : ""}`;
@@ -122,6 +123,15 @@ function renderReader(view, l) {
     openId = null;
     toast("Lesson deleted.");
     refresh();
+  });
+  view.querySelector("#l-deeper").addEventListener("click", () => {
+    const headings = l.sections.map((s) => s.h || s.caption || "").filter(Boolean).join(" · ");
+    openTutor({
+      title: "Go deeper — " + l.title,
+      context: `The student just read the lesson "${l.title}" (${(track || {}).name || ""}). Its summary: ${l.summary}. Section headings: ${headings}.`,
+      intro: "Ask about anything the lesson made you curious (or confused) about — I'll go deeper with concrete examples.",
+      starters: ["Explain the hardest idea here with a worked example", "How does this show up in real attacks/defenses?", "Quiz me harder on this"]
+    });
   });
 }
 

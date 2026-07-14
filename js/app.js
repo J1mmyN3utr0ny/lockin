@@ -4,6 +4,7 @@ import { $, $$, esc, toast, openModal, closeModal, confirmModal, confetti, buzz 
 import * as AI from "./ai.js";
 import * as Lab from "./lab.js";
 
+import { managerTick, unreadCount, openNotifications } from "./modules/manager.js";
 import today from "./modules/today.js";
 import physique from "./modules/physique.js";
 import diet from "./modules/diet.js";
@@ -57,13 +58,16 @@ function renderTopbar() {
   const el = $("#topbar-right");
   const streak = S.computeStreak();
   const lp = S.levelProgress(S.getState().xp || 0);
+  const unread = unreadCount();
   el.innerHTML = `
     <span class="pill xp" title="${lp.into}/${lp.need} XP to Lv ${lp.lvl + 1}">⚡ Lv ${lp.lvl}</span>
     ${streak > 0 ? `<span class="pill gold">🔥 ${streak}</span>` : ""}
     ${mode === "test"
       ? `<span class="pill accent">Proving Grounds</span>`
       : `<span class="pill">${dLeft >= 0 ? dLeft + "d to Sep 30" : "summer over"}</span>`}
+    <button class="btn sm ghost bell" id="bell" aria-label="manager notes">🔔${unread ? `<span class="bell-badge">${unread > 9 ? "9+" : unread}</span>` : ""}</button>
     <button class="btn sm ghost" id="gear" aria-label="settings">⚙</button>`;
+  $("#bell").addEventListener("click", openNotifications);
   $("#gear").addEventListener("click", openSettings);
 }
 
@@ -104,13 +108,13 @@ function openSettings() {
     <p class="small dim" style="margin-top:6px">Auto flips to <b>Proving Grounds</b> on Sep 30, 2026.</p>
 
     <hr class="hr" />
-    <label class="field">🤖 AI tutor — Gemini 2.5 Flash key (free)</label>
+    <label class="field">🤖 AI — Gemini key (free)</label>
     <input id="set-ai" type="password" placeholder="paste API key" value="${esc(s.settings.geminiKey || "")}" />
     <div class="row" style="gap:8px; margin-top:8px">
       <button class="btn sm" id="set-ai-save" style="flex:1">Save key</button>
       <button class="btn sm primary" id="set-ai-test" style="flex:1">Test</button>
     </div>
-    <p class="small dim" style="margin-top:6px">Get a free key at <span class="kbd">aistudio.google.com/apikey</span>. Powers the hands-on tutor, work reviews and hints. Stored only on this device.</p>
+    <p class="small dim" style="margin-top:6px">Get a free key at <span class="kbd">aistudio.google.com/apikey</span>. Powers the tutor, Build Coach, lesson generator, day planner and the 🔔 manager — big jobs use <b>2.5 Flash</b>, small ones <b>Flash-Lite</b>. Stored only on this device.</p>
     <div id="set-ai-status" class="small" style="margin-top:4px"></div>
 
     <hr class="hr" />
@@ -261,6 +265,12 @@ function boot() {
   route();
   onboard();
   Lab.startAppSync(); // keep phone and PC in step through the Lab hub
+
+  // The AI manager takes a throttled look at the day shortly after launch.
+  setTimeout(async () => {
+    const n = await managerTick();
+    if (n > 0) toast(`🔔 The manager left you ${n} note${n > 1 ? "s" : ""}`);
+  }, 3000);
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

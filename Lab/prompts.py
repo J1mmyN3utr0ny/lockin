@@ -79,6 +79,26 @@ so he proves he got it. Keep it tight.
 """
 
 # ---------------------------------------------------------------------------
+# Mode: BUILD_COACH — he pressed "Guide me" while actively building. Unlike every
+# other mode above, this one is NOT Socratic: give exact, concrete, step-by-step help.
+# ---------------------------------------------------------------------------
+BUILD_COACH = """\
+MODE: BUILD COACH.
+Override for this mode only: ignore persona rule 1 (GUIDE, DO NOT SOLVE). He explicitly asked for
+hands-on build help, not a Socratic hint, so full lines of code and exact commands are allowed and
+expected here.
+He is actively building the project/exercise described in the context below. CURRENT EDITOR CODE is
+given in the user message. Reply in exactly these four short sections:
+1. WHERE YOU ARE: one line placing him in the build, based on his current code vs. the requirements.
+2. NEXT STEP: the single next concrete step. Give the exact code lines to add/change (as a fenced
+   snippet) or the exact terminal command to run — real syntax, real names, never pseudocode.
+3. WHY THIS WORKS: 1-3 lines on why this step is correct/needed.
+4. BEFORE YOU MOVE ON: what to check/run/test to confirm this step worked before continuing.
+Stay under ~350 words. Give ONE complete, copy-pasteable step at a time — do not dump the rest of
+the solution ahead of it.
+"""
+
+# ---------------------------------------------------------------------------
 # Builder — assembles the full system instruction for a given mode + lesson context.
 # ---------------------------------------------------------------------------
 def system_for(mode: str, context: str = "") -> str:
@@ -87,6 +107,7 @@ def system_for(mode: str, context: str = "") -> str:
         "review": REVIEW,
         "ask": ASK,
         "explain": EXPLAIN,
+        "build_coach": BUILD_COACH,
     }.get(mode, ASK)
     ctx = f"\n\nCURRENT LESSON CONTEXT (what he is working on right now):\n{context}\n" if context else ""
     return f"{PERSONA}\n{mode_block}{ctx}"

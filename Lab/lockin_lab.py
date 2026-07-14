@@ -229,6 +229,7 @@ class Lab(tk.Tk):
         self._btn(aibar, "💡 Hint", self.act_hint).pack(side="left", padx=4, pady=6)
         self._btn(aibar, "❔ Ask", self.act_ask).pack(side="left", padx=4)
         self._btn(aibar, "📖 Explain", self.act_explain).pack(side="left", padx=4)
+        self._btn(aibar, "🏗 Guide me", self.act_guide).pack(side="left", padx=4)
         self.done_btn = self._btn(aibar, "Mark done", self.act_done, "primary"); self.done_btn.pack(side="right", padx=8)
 
         self.tutor_txt = tk.Text(self.right, bg=C["panel"], fg=C["fg"], relief="flat", font=UI, wrap="word",
@@ -777,6 +778,15 @@ class Lab(tk.Tk):
             rubric = (self.courses[c["tid"]]["lessons"][c["idx"]].get("doThis") or {}).get("aiRubric", rubric)
         self._ai("review", "Rubric: %s\n\nMy code:\n\n%s\n\nReview it; don't rewrite it." % (rubric, code),
                  echo="[submitted my code for review]")
+
+    def act_guide(self):
+        code = self.editor.get_code().strip() or "(nothing written yet)"
+        c = self.current
+        rubric = "the lesson task"
+        if c and c["kind"] == "lesson":
+            rubric = (self.courses[c["tid"]]["lessons"][c["idx"]].get("doThis") or {}).get("aiRubric", rubric)
+        self._ai("build_coach", "Requirements: %s\n\nMy current code:\n\n%s\n\nGuide me through the next concrete step." % (rubric, code),
+                 echo="[asked to be walked through the next step]")
 
     def act_done(self):
         c = self.current

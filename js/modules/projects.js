@@ -9,7 +9,7 @@ import { esc, barHTML, refresh, toast, confetti, buzz, openModal } from "../ui.j
 import { whyProjects, principles, resumeTips, tiers, projects, projectById, projectsInTier } from "../data/resume_projects.js";
 import { milestones as csMilestones } from "../data/cs_milestones.js";
 import { trackById } from "../data/skill_tracks.js";
-import { openTutor, PERSONA } from "../ai.js";
+import { openTutor, PERSONA, BUILDER } from "../ai.js";
 
 let sub = "portfolio"; // portfolio | resume
 let openProj = null;
@@ -53,7 +53,15 @@ function tutorForStage(p, i, mode) {
     `Current stage: "${s.name}" — goal: ${s.goal}\n` +
     `Design questions he should answer himself first: ${s.dq.join(" | ")}\n` +
     `Tech in play: ${p.stack.join(", ")}`;
-  if (mode === "review") {
+  if (mode === "build") {
+    // The Build Coach: by explicit user request this mode IS allowed to hand over
+    // exact commands and code lines — it's for when he is actively building.
+    openTutor({ title: "🏗 Build guide — " + s.name, system: BUILDER, context: ctx,
+      intro: "Tell me where you are (or paste your current code) and I'll give you the exact next steps — real commands, real lines, with the why.",
+      starters: ["I'm starting from zero — give me step 1 with the exact code",
+                 "Here's my current code — what exactly do I write next?",
+                 "Give me the exact setup commands for this stage"] });
+  } else if (mode === "review") {
     openTutor({ title: "Review my code", context: ctx,
       intro: "Paste the code you wrote for this stage. I'll review it against the goal — I won't rewrite it.",
       starters: ["Review the code I'm about to paste", "Did I structure this the right way?"] });
@@ -134,6 +142,7 @@ function stageHTML(p, i) {
           <button class="btn sm" data-tutor="${p.id}:${i}:hint" style="flex:1">💡 Ask tutor</button>
           <button class="btn sm" data-tutor="${p.id}:${i}:review" style="flex:1">✓ Review my code</button>
         </div>
+        <button class="btn sm primary block" data-tutor="${p.id}:${i}:build" style="margin-top:8px">🏗 Build guide — exact steps while you build</button>
       ` : ""}
     </div>`;
 }

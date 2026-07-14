@@ -41,12 +41,6 @@ export function cyberTrackFor(dateKey) {
   return tracks[rotationIndex(dateKey) % tracks.length];
 }
 
-// Hebrew is the priority; weight the PET rotation toward it.
-const PET_ROTA = ["Hebrew vocab", "Hebrew sentences", "English vocab", "Hebrew vocab", "Math drills", "Hebrew vocab"];
-export function petFocusFor(dateKey) {
-  return PET_ROTA[rotationIndex(dateKey) % PET_ROTA.length];
-}
-
 function mathDone() {
   const c = S.getState().math.checklist;
   return mathSections.every((s) => c[s.id]);
@@ -90,10 +84,10 @@ function deepWorkDay(dateKey, dow) {
     { id: "lunch", time: "12:00", cat: "food", title: "Lunch — ~40g protein", sub: "Tuna pasta / chicken + rice.", link: L.food },
     { id: "cyber", time: "13:00", cat: "cyber", title: `Cyber — ${t.icon} ${t.name}`, sub: "In LockIn Lab (desktop): read the lesson, build it, get your code checked. 🔒 Focus is Lab-gated.", link: L.cyber },
     { id: "leet", time: "13:45", cat: "leet", title: "LeetCode — daily", sub: "Solve today's problem in the Lab (a Hard lands ~weekly). Finishing it unlocks your phone.", link: L.cyber },
-    { id: "vocab", time: "14:30", cat: "pet", title: "Hebrew + English vocab", sub: "15+ new words. Recognition compounds fast.", link: L.pet },
+    { id: "pethw", time: "14:30", cat: "pet", title: "PET course homework", sub: "Whatever's still open from Sunday/Wednesday's class — it's direct exam practice, do it while it's fresh." },
     S.daysBetween(S.PROJECT_START, dateKey) >= 0
       ? { id: "capstone", time: "15:15", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
-      : { id: "petpractice", time: "15:15", cat: "pet", title: `PET practice — ${petFocusFor(dateKey)}`, sub: "One focused set. Understand the path, not just the answer.", link: L.pet },
+      : { id: "petsite", time: "15:15", cat: "pet", title: "PET practice — course website", sub: "Timed drill sets on the course's site (Hebrew first). Their material mirrors the real exam." },
     { id: "free", time: "16:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
     { id: "snack", time: "19:00", cat: "food", title: "Snack — pre-gym fuel", sub: "~25g protein about an hour before you lift.", link: L.food },
     travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
@@ -116,7 +110,7 @@ function courseDay(dateKey, dow) {
     { id: "leet", time: "15:30", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
     { id: "light", time: "16:15", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
     { id: "homework", time: "17:15", cat: "pet", title: "PET homework — from today's class", sub: "Do it while it's fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
-    { id: "review", time: "18:00", cat: "pet", title: "Review notes + vocab", sub: "Lock in today's course material.", link: L.pet },
+    { id: "petsite", time: "18:00", cat: "pet", title: "PET practice — course website", sub: "Lock in today's class with a drill set on the course's site." },
     { id: "dinner", time: "18:40", cat: "food", title: "Dinner — ~45g protein", sub: "Fuel for tonight's session — eat well before you lift.", link: L.food },
     travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("20:00", dow),
@@ -250,15 +244,7 @@ function applyDayOrder(dateKey, blocks) {
 export function hasCustomOrder(dateKey) { return !!((S.getState().dayOrders || {})[dateKey] || []).length; }
 export function resetDayOrder(dateKey) { S.update((st) => { if (st.dayOrders) delete st.dayOrders[dateKey]; }); }
 
-// Move the unit `unitId` one step earlier (-1) or later (+1) in the day.
-// Returns false when the move would cross a fixed anchor (or nothing to swap with).
-export function moveUnit(dateKey, unitId, dir) {
-  const units = unitize(buildDay(dateKey).blocks);
-  const i = units.findIndex((u) => u.id === unitId);
-  const j = i + dir;
-  if (i < 0 || units[i].fixed || j < 0 || j >= units.length || units[j].fixed) return false;
-  [units[i], units[j]] = [units[j], units[i]];
-  const ids = units.filter((u) => !u.fixed).map((u) => u.id);
+function saveOrder(dateKey, ids) {
   S.update((st) => {
     if (!st.dayOrders) st.dayOrders = {};
     st.dayOrders[dateKey] = ids;
@@ -266,6 +252,35 @@ export function moveUnit(dateKey, unitId, dir) {
       if (S.daysBetween(k, dateKey) > 7) delete st.dayOrders[k]; // prune stale days
     }
   });
+}
+
+// Drag & drop: re-insert the movable unit `unitId` at `insertAt` — an index into the
+// unit list WITHOUT the dragged unit. Clamped to the unit's own segment so a drop
+// can never cross a fixed anchor. Returns true when an order was saved.
+export function placeUnit(dateKey, unitId, insertAt) {
+  const units = unitize(buildDay(dateKey).blocks);
+  const i = units.findIndex((u) => u.id === unitId);
+  if (i < 0 || units[i].fixed) return false;
+  let lo = i; while (lo > 0 && !units[lo - 1].fixed) lo--;
+  let hi = i; while (hi < units.length - 1 && !units[hi + 1].fixed) hi++;
+  // After removing the unit, its segment occupies [lo, hi-1]; valid insert points are lo..hi.
+  const t = Math.max(lo, Math.min(hi, insertAt));
+  const arr = units.slice();
+  const [u] = arr.splice(i, 1);
+  arr.splice(t, 0, u);
+  saveOrder(dateKey, arr.filter((x) => !x.fixed).map((x) => x.id));
+  S.logEvent("adjust", `reordered the day plan (${S.prettyDate(dateKey)})`);
+  return true;
+}
+
+// The AI day-planner writes a whole order at once. Only accepted when `ids` is exactly
+// the set of movable unit ids — anything else is rejected, nothing changes.
+export function setDayOrder(dateKey, ids) {
+  const movable = unitize(buildDay(dateKey).blocks).filter((u) => !u.fixed).map((u) => u.id);
+  if (!Array.isArray(ids) || ids.length !== movable.length) return false;
+  const want = new Set(movable);
+  if (!ids.every((id) => typeof id === "string" && want.has(id)) || new Set(ids).size !== ids.length) return false;
+  saveOrder(dateKey, ids);
   return true;
 }
 

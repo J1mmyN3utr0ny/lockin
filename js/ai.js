@@ -1,11 +1,21 @@
-// ai.js — the AI tutor. Talks to Google's Gemini 2.5 Flash (free tier) with a key the user
-// pastes into Settings. Powers hands-on teaching: Socratic hints, work review, Q&A.
+// ai.js — the AI core. Talks to Google's Gemini free tier with a key the user pastes into
+// Settings. Powers the Socratic tutor, the Build Coach, lesson generation and the app manager.
 import * as S from "./state.js";
 import { esc, openModal, closeModal, toast } from "./ui.js";
 
-export const MODEL = "gemini-2.5-flash";
-const ENDPOINT = (key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+// Model tiers — the right brain for each job: SMART (2.5 Flash) for lessons, build
+// guides and tutoring; FAST (Flash-Lite) for small tasks like manager notes and quick
+// plans. Each tier is a fallback chain: if the key/region doesn't serve a model (404),
+// the next one is tried and the working pick is remembered for the session.
+export const MODEL_TIERS = {
+  smart: ["gemini-2.5-flash", "gemini-2.0-flash"],
+  fast: ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
+};
+export const MODEL = MODEL_TIERS.smart[0];
+const picked = {}; // tier -> model confirmed working for this key (session only)
+
+const ENDPOINT = (key, model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
 export function getKey() { return (S.getState().settings.geminiKey || "").trim(); }
 export function hasKey() { return getKey().length > 20; }
@@ -23,36 +33,75 @@ export const PERSONA =
   "short code snippets only to illustrate a concept, never to complete his task. (5) Encourage him to run things " +
   "himself in a real terminal/editor. Keep answers focused and under ~200 words unless he asks to go deep.";
 
-// Low-level call. Returns text or throws a friendly Error.
-export async function gemini({ system, messages, temperature = 0.7 }) {
+// Low-level call. Picks the model from `tier` (or an explicit `model`), walking the
+// tier's fallback chain when a model isn't served. Returns text or throws a friendly Error.
+export async function gemini({ system, messages, temperature = 0.7, tier = "smart", model }) {
   const key = getKey();
   if (!key) throw new Error("NO_KEY");
-  const body = {
-    contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
-    // 2.5 Flash is a thinking model: disable thinking so tokens go to the answer, not silent reasoning,
-    // and give the reply real room so structured reviews aren't truncated.
-    generationConfig: { temperature, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } }
-  };
-  if (system) body.system_instruction = { parts: [{ text: system }] };
+  const chain = model ? [model] : (MODEL_TIERS[tier] || MODEL_TIERS.smart);
+  const start = Math.max(0, picked[tier] ? chain.indexOf(picked[tier]) : 0);
+  let lastErr = null;
 
-  let res;
-  try {
-    res = await fetch(ENDPOINT(key), {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-    });
-  } catch (e) { throw new Error("Network error — are you online? (The tutor needs internet; the rest of the app doesn't.)"); }
+  for (let ci = start; ci < chain.length; ci++) {
+    const mdl = chain[ci];
+    const body = {
+      contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
+      // 2.5 models think by default: disable it so tokens go to the answer, not silent
+      // reasoning. (2.0 models reject thinkingConfig, so only send it where supported.)
+      generationConfig: {
+        temperature, maxOutputTokens: 2048,
+        ...(mdl.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {})
+      }
+    };
+    if (system) body.system_instruction = { parts: [{ text: system }] };
 
-  if (res.status === 400) throw new Error("Gemini rejected the request — your API key may be wrong. Re-check it in ⚙ Settings.");
-  if (res.status === 403) throw new Error("Access denied (403) — the key isn't authorized for the Gemini API. Make a fresh free key at aistudio.google.com.");
-  if (res.status === 429) throw new Error("Rate limit hit (free tier) — wait a minute and try again.");
-  if (!res.ok) throw new Error(`Gemini error ${res.status}. Try again shortly.`);
+    let res;
+    try {
+      res = await fetch(ENDPOINT(key, mdl), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+    } catch (e) { throw new Error("Network error — are you online? (The AI needs internet; the rest of the app doesn't.)"); }
 
-  const data = await res.json();
-  const cand = data.candidates && data.candidates[0];
-  const text = cand && cand.content && cand.content.parts && cand.content.parts.map((p) => p.text).join("");
-  if (!text) throw new Error("The tutor returned nothing — try rephrasing.");
-  return text.trim();
+    if (res.status === 404) { lastErr = new Error(`Model ${mdl} isn't available for this key.`); continue; } // walk the chain
+    if (res.status === 400) throw new Error("Gemini rejected the request — your API key may be wrong. Re-check it in ⚙ Settings.");
+    if (res.status === 403) throw new Error("Access denied (403) — the key isn't authorized for the Gemini API. Make a fresh free key at aistudio.google.com.");
+    if (res.status === 429) throw new Error("Rate limit hit (free tier) — wait a minute and try again.");
+    if (!res.ok) throw new Error(`Gemini error ${res.status}. Try again shortly.`);
+
+    const data = await res.json();
+    const cand = data.candidates && data.candidates[0];
+    const text = cand && cand.content && cand.content.parts && cand.content.parts.map((p) => p.text).join("");
+    if (!text) throw new Error("The AI returned nothing — try rephrasing.");
+    picked[tier] = mdl;
+    return text.trim();
+  }
+  throw lastErr || new Error("No Gemini model available for this key.");
 }
+
+// Strict JSON extraction from a model reply (strips fences, trims chatter). Shared by
+// every feature that demands machine-readable output. Throws on anything non-JSON.
+export function extractJSON(text) {
+  let t = String(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const a = t.indexOf("{"), b = t.indexOf("[");
+  const start = a === -1 ? b : (b === -1 ? a : Math.min(a, b));
+  if (start === -1) throw new Error("no JSON found in the reply");
+  const end = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+  if (end <= start) throw new Error("unterminated JSON in the reply");
+  return JSON.parse(t.slice(start, end + 1));
+}
+
+// The Build Coach persona — the deliberate opposite of the Socratic tutor, by the user's
+// explicit request: when he is actively BUILDING, give detailed concrete instructions —
+// exact commands, exact code lines, file names — each with a one-line why, so the build
+// moves and the learning sticks.
+export const BUILDER =
+  "You are the BUILD COACH inside 'LockIn', guiding an 18-year-old software-engineering student " +
+  "(strong Python reader, aiming for the IDF's GAMA cyber program) while he is ACTIVELY building. " +
+  "Unlike the app's Socratic tutor, in this mode you are hands-on and concrete: give the exact next " +
+  "steps with real terminal commands, real code lines/snippets and file names — never vague advice. " +
+  "Structure every answer as: (1) where he is right now, (2) the next concrete step with the exact " +
+  "code/commands to write, (3) one short WHY per step so he learns while building, (4) how to verify " +
+  "it works before moving on. Keep it under ~350 words and specific to the state he shows you.";
 
 // Very light markdown → HTML (bold, inline code, fenced code, line breaks).
 export function mdLite(t) {

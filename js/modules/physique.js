@@ -30,6 +30,7 @@ function overloadHint(ex) {
 function addSet(dayId, exId, w, r) {
   if (!w && !r) return;
   const key = S.todayKey();
+  if (!S.getState().workoutLogs[key]) S.logEvent("workout", `started logging the ${dayId} workout`);
   S.update((st) => {
     if (!st.workoutLogs[key]) st.workoutLogs[key] = { dayId, ex: {} };
     st.workoutLogs[key].dayId = dayId;

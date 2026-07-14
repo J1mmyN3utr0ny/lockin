@@ -50,6 +50,9 @@ function defaults() {
     days: {}, // days[key] = { blocks:{id:true}, offDay:false, note:"" }
     dayOrders: {}, // dayOrders[key] = [movable unit ids in the user's chosen day order]
     customLessons: [], // AI-generated Learn-hub lessons (see modules/lesson_gen.js)
+    events: [], // capped log of notable app events — the AI manager's raw material
+    notifications: [], // manager notes for the 🔔 panel: {id, t, icon, text, read}
+    manager: { lastRun: 0 }, // throttle for the AI manager (ms timestamp)
     workoutLogs: {}, // [key] = { dayId, ex:{ exId:[{w,r}] } }
     cs: { milestones: {} }, // id -> { status, hintLevel, reflection }
     projects: {}, // resume-project id -> { stages:{i:{done,hintLevel}}, ship:{i:true}, bullets, reflection, rebuilt }
@@ -191,6 +194,15 @@ export function daysToSummerEnd() { return daysBetween(todayKey(), SUMMER_END); 
 
 // Off-day tokens
 export function offDaysLeft() { return OFFDAY_TOKENS - state.offDays.spent.length; }
+
+// Log a notable app event for the AI manager to reason over (capped, oldest dropped).
+export function logEvent(type, text) {
+  update((st) => {
+    if (!Array.isArray(st.events)) st.events = [];
+    st.events.push({ t: Date.now(), type, text });
+    if (st.events.length > 40) st.events = st.events.slice(-40);
+  });
+}
 
 // Ensure a day record exists (does not persist by itself).
 export function dayRec(key) {

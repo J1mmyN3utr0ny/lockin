@@ -13,7 +13,7 @@
 //    AI output is never injected as raw HTML (unlike the hand-authored lessons).
 import * as S from "../state.js";
 import { esc, openModal, closeModal, toast, confetti, buzz } from "../ui.js";
-import { gemini, hasKey } from "../ai.js";
+import { gemini, hasKey, extractJSON } from "../ai.js";
 import { lessonTracks } from "../data/lessons_content.js";
 import { topicSuggestions } from "../data/lesson_topics.js";
 
@@ -30,16 +30,6 @@ const SYSTEM =
 let running = false; // one generation at a time
 
 // ---- strict parsing & validation ----------------------------------------------
-
-function extractJSON(text) {
-  let t = String(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  const a = t.indexOf("{"), b = t.indexOf("[");
-  const start = a === -1 ? b : (b === -1 ? a : Math.min(a, b));
-  if (start === -1) throw new Error("no JSON found in the reply");
-  const end = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
-  if (end <= start) throw new Error("unterminated JSON in the reply");
-  return JSON.parse(t.slice(start, end + 1));
-}
 
 const isStr = (v, min, max) => typeof v === "string" && v.trim().length >= min && v.length <= max;
 
@@ -109,7 +99,7 @@ async function step(prompt, validate, ctl) {
     if (ctl.cancelled) throw new Error("cancelled");
     let raw;
     try {
-      raw = await gemini({ system: SYSTEM, messages: [{ role: "user", text: prompt }], temperature: 0.35 });
+      raw = await gemini({ tier: "smart", system: SYSTEM, messages: [{ role: "user", text: prompt }], temperature: 0.35 });
     } catch (e) {
       if (/rate limit/i.test(e.message) && attempt === 0) { ctl.note("rate-limited — backing off 30s…"); await sleep(30000); continue; }
       throw e;
@@ -300,6 +290,7 @@ export function openGenerator(trackId, onDone) {
         if (!Array.isArray(st.customLessons)) st.customLessons = [];
         st.customLessons.push(lesson);
       });
+      S.logEvent("lesson", `generated the AI lesson "${lesson.title}" (${track.name})`);
       running = false;
       confetti(24); buzz(20);
       toast(`📘 "${lesson.title}" is ready in ${track.name}`);
