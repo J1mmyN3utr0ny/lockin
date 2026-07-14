@@ -3,13 +3,15 @@
 import * as S from "./state.js";
 import { esc, openModal, closeModal, toast } from "./ui.js";
 
-// Model tiers — the right brain for each job: SMART (2.5 Flash) for lessons, build
-// guides and tutoring; FAST (Flash-Lite) for small tasks like manager notes and quick
-// plans. Each tier is a fallback chain: if the key/region doesn't serve a model (404),
-// the next one is tried and the working pick is remembered for the session.
+// Model tiers — the right brain for each job: SMART for lessons, build guides and
+// tutoring; FAST for small tasks like manager notes and quick plans. Line-up verified
+// against ai.google.dev/gemini-api/docs/models (July 2026): gemini-3.5-flash is the
+// current stable Flash and gemini-3.1-flash-lite the current stable Lite. Each tier is
+// a fallback chain: models the key/region doesn't serve (404) or that reject the
+// request shape (400) are skipped, and the working pick is remembered for the session.
 export const MODEL_TIERS = {
-  smart: ["gemini-2.5-flash", "gemini-2.0-flash"],
-  fast: ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.0-flash"]
+  smart: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3-flash-preview"],
+  fast: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash"]
 };
 export const MODEL = MODEL_TIERS.smart[0];
 const picked = {}; // tier -> model confirmed working for this key (session only)
@@ -62,8 +64,10 @@ export async function gemini({ system, messages, temperature = 0.7, tier = "smar
       });
     } catch (e) { throw new Error("Network error — are you online? (The AI needs internet; the rest of the app doesn't.)"); }
 
-    if (res.status === 404) { lastErr = new Error(`Model ${mdl} isn't available for this key.`); continue; } // walk the chain
-    if (res.status === 400) throw new Error("Gemini rejected the request — your API key may be wrong. Re-check it in ⚙ Settings.");
+    // 404 = model not served for this key; 400 can be a model-specific request-shape
+    // rejection (e.g. thinking params) — both walk the chain instead of failing hard.
+    if (res.status === 404) { lastErr = new Error(`Model ${mdl} isn't available for this key.`); continue; }
+    if (res.status === 400) { lastErr = new Error("Gemini rejected the request — your API key may be wrong. Re-check it in ⚙ Settings."); continue; }
     if (res.status === 403) throw new Error("Access denied (403) — the key isn't authorized for the Gemini API. Make a fresh free key at aistudio.google.com.");
     if (res.status === 429) throw new Error("Rate limit hit (free tier) — wait a minute and try again.");
     if (!res.ok) throw new Error(`Gemini error ${res.status}. Try again shortly.`);

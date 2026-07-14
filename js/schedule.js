@@ -88,7 +88,8 @@ function deepWorkDay(dateKey, dow) {
     S.daysBetween(S.PROJECT_START, dateKey) >= 0
       ? { id: "capstone", time: "15:15", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
       : { id: "petsite", time: "15:15", cat: "pet", title: "PET practice — course website", sub: "Timed drill sets on the course's site (Hebrew first). Their material mirrors the real exam." },
-    { id: "free", time: "16:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
+    { id: "portfolio", time: "16:15", cat: "cs", title: "Portfolio project — build & ship", sub: "One stage of your résumé ladder (Learn → Portfolio). Use the 🏗 Build guide when you're actively writing.", link: "#learn/projects" },
+    { id: "free", time: "17:00", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
     { id: "snack", time: "19:00", cat: "food", title: "Snack — pre-gym fuel", sub: "~25g protein about an hour before you lift.", link: L.food },
     travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("20:00", dow),

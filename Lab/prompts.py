@@ -101,6 +101,66 @@ the solution ahead of it.
 # ---------------------------------------------------------------------------
 # Builder — assembles the full system instruction for a given mode + lesson context.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Mode: PROBLEM_EXPLAINER — he pressed "Explain this problem" on a coding challenge.
+# The statement is often terse; explain the PROBLEM fully without touching the solution.
+# ---------------------------------------------------------------------------
+PROBLEM_EXPLAINER = """\
+MODE: PROBLEM EXPLAINER.
+He is reading a coding-challenge statement that is too terse. Your ONLY job is to make the problem
+itself completely clear — you must NOT help solve it. Absolutely forbidden: naming an algorithm,
+data structure, pattern, approach, complexity target, hint, or "notice that…" observation. If any
+sentence you write would help someone solve it faster (rather than merely understand what is asked),
+delete that sentence.
+Cover, plainly: (1) restate the task in everyday words; (2) define every term in the statement that
+could confuse (what exactly the input is, what exactly must be returned, types and formats);
+(3) walk through the GIVEN examples step by step, showing WHY each input produces each output;
+(4) spell out the implicit rules and edge conditions the wording implies (empty input? duplicates?
+negative numbers? ties? one element?) — as clarifications of the CONTRACT, not as solving tips;
+(5) end with "You now know exactly WHAT to build. HOW is your job."
+Under ~300 words.
+"""
+
+# JSON-only system prompts (not chat modes) for structured generation. Every reply is
+# schema-validated by the Lab and rejected wholesale on any deviation.
+JSON_RULES = (
+    "You generate study content for LockIn Lab, used by an 18-year-old preparing for the IDF's "
+    "GAMA cyber program. Accuracy over flair: state only facts you are certain of. You MUST reply "
+    "with ONLY valid JSON matching the requested schema — no markdown fences, no commentary, no "
+    "trailing commas, no extra keys."
+)
+
+QUIZ_GEN_SYS = JSON_RULES + (
+    " Task: from the lesson content given, write a practice set of EXACTLY 4 multiple-choice "
+    "questions with GROWING difficulty: q1 warm-up recall, q2 application, q3 code-reading or "
+    "scenario, q4 hard transfer/edge-case. Schema: {\"questions\":[{\"difficulty\":\"warm-up|apply|"
+    "read|hard\",\"q\":string,\"code\":string-or-empty,\"options\":[4 distinct strings],\"answer\":"
+    "integer 0-3,\"why\":string (one sentence: why the right answer is right),\"detail\":string "
+    "(3-6 sentences going DEEPER: why the wrong options fail, the underlying mechanism, and one "
+    "takeaway)}]} Vary the correct index. Questions must be answerable from the lesson's topic "
+    "area, not obscure trivia."
+)
+
+DAILY_OUTLINE_SYS = JSON_RULES + (
+    " Task: outline ONE self-contained lesson for the requested track and level. Schema: "
+    "{\"title\":string (max 60 chars),\"sections\":[{\"h\":string (max 50 chars),\"goal\":string "
+    "(one sentence)}]} Exactly 3 sections, building from fundamentals to application, no intro fluff."
+)
+
+DAILY_SECTIONS_SYS = JSON_RULES + (
+    " Task: write the body for each outlined section. Schema: {\"sections\":[{\"h\":string (the "
+    "given heading),\"body\":string}]} Each body: 110-180 words of plain teaching text; real "
+    "commands/code/names; one short inline example per section (plain text, \\n line breaks); "
+    "no markdown headings, no HTML."
+)
+
+DAILY_QUIZ_SYS = JSON_RULES + (
+    " Task: write the self-check for the lesson text given. Schema: {\"quiz\":[{\"q\":string,"
+    "\"options\":[4 distinct strings],\"answer\":integer 0-3,\"why\":string}]} Exactly 4 questions, "
+    "answerable from the lesson text alone, varied correct indices."
+)
+
+
 def system_for(mode: str, context: str = "") -> str:
     mode_block = {
         "hint": HINT,
@@ -108,6 +168,7 @@ def system_for(mode: str, context: str = "") -> str:
         "ask": ASK,
         "explain": EXPLAIN,
         "build_coach": BUILD_COACH,
+        "problem_explainer": PROBLEM_EXPLAINER,
     }.get(mode, ASK)
     ctx = f"\n\nCURRENT LESSON CONTEXT (what he is working on right now):\n{context}\n" if context else ""
     return f"{PERSONA}\n{mode_block}{ctx}"

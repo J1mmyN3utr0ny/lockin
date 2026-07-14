@@ -20,6 +20,7 @@ export const philosophy = {
     "Chest gets a heavy day and a second volume day (Day A + Day E).",
     "Abs are hit 3×/week; obliques get dedicated loaded work (new for you) on Day D.",
     "Biceps are maintained, not chased — one focused slot on Day C with a grip that spares forearms.",
+    "Forearms are a growth FOCUS: direct work ends Day C + Day E, and a hand gripper covers the other days.",
     "Progressive overload is the whole game: beat last week's log by a rep or a small load, every session.",
     "The exact same workouts live in your Gymmy app as the Day A–E templates — log in either app."
   ]
@@ -66,15 +67,17 @@ export const days = [
     ]
   },
   {
-    id: "C", name: "Day C", focus: "Back (straps) · biceps maintenance",
+    id: "C", name: "Day C", focus: "Back (straps) · biceps · forearms",
     warmup: "Band pull-aparts, one light lat-pulldown set.",
     exercises: [
       { id: "Wide-Grip_Lat_Pulldown", name: "Wide-Grip Lat Pulldown", target: "Lats", sets: 4, reps: 10, straps: true, cue: "STRAPS. Pull with the elbows to the hips; imagine your hands are just hooks." },
       { id: "Dumbbell_Incline_Row", name: "Dumbbell Incline Row", target: "Mid-back", sets: 3, reps: 10, straps: true, cue: "STRAPS. Chest on the bench, squeeze shoulder blades; don't yank with the arms." },
       { id: "Seated_Cable_Rows", name: "Seated Cable Rows", target: "Back", sets: 3, reps: 10, straps: true, cue: "STRAPS. Chest up, drive elbows back." },
       { id: "Face_Pull", name: "Face Pull", target: "Rear delts", sets: 3, reps: 15, cue: "Rope to forehead, external rotation. Posture insurance." },
-      { id: "Incline_Dumbbell_Curl", name: "Incline Dumbbell Curl", target: "Biceps", sets: 3, reps: 10, cue: "Elbow drives the rep; keep wrist neutral and grip loose to keep forearms out of it." },
-      { id: "Standing_Biceps_Cable_Curl", name: "Standing Biceps Cable Curl", target: "Biceps", sets: 2, reps: 12, cue: "Constant tension. Maintenance only — don't turn this into a forearm day." }
+      { id: "Incline_Dumbbell_Curl", name: "Incline Dumbbell Curl", target: "Biceps", sets: 3, reps: 10, cue: "Elbow drives the rep; keep the wrist neutral so the biceps do the work." },
+      { id: "Standing_Biceps_Cable_Curl", name: "Standing Biceps Cable Curl", target: "Biceps", sets: 2, reps: 12, cue: "Constant tension, strict form." },
+      { id: "Palms-Up_Barbell_Wrist_Curl_Over_A_Bench", name: "Palms-Up Barbell Wrist Curl Over A Bench", target: "Forearms", sets: 3, reps: 15, cue: "GROWTH FOCUS. Light bar, full stretch at the bottom, slow squeeze up — last thing of the day so grip fatigue costs nothing." },
+      { id: "Reverse_Barbell_Curl", name: "Reverse Barbell Curl", target: "Forearms", sets: 3, reps: 12, cue: "Light weight, palms down — hits the top of the forearm that actually shows." }
     ]
   },
   {
@@ -90,7 +93,7 @@ export const days = [
     ]
   },
   {
-    id: "E", name: "Day E", focus: "Shoulders · chest #2 · abs",
+    id: "E", name: "Day E", focus: "Shoulders · chest #2 · abs · forearms",
     warmup: "Band dislocates, one light lateral-raise set.",
     exercises: [
       { id: "Machine_Shoulder_Military_Press", name: "Machine Shoulder (Military) Press", target: "Front/Side delts", sets: 4, reps: 10, cue: "Press slightly forward of the ears; controlled. Machine = no grip demand." },
@@ -98,7 +101,9 @@ export const days = [
       { id: "Incline_Cable_Chest_Press", name: "Incline Cable Chest Press", target: "Upper chest", sets: 3, reps: 10, cue: "Second chest hit of the week — grip-light selection." },
       { id: "Butterfly", name: "Butterfly (pec deck)", target: "Chest", sets: 3, reps: 12, cue: "Pure chest squeeze, no grip demand." },
       { id: "Reverse_Machine_Flyes", name: "Reverse Machine Flyes", target: "Rear delts", sets: 3, reps: 15, cue: "Balances all the pressing." },
-      { id: "Decline_Crunch", name: "Decline Crunch", target: "Abs", sets: 3, reps: 12, cue: "Hold a plate on your chest once 12 is easy. Slow eccentric; brace hard." }
+      { id: "Decline_Crunch", name: "Decline Crunch", target: "Abs", sets: 3, reps: 12, cue: "Hold a plate on your chest once 12 is easy. Slow eccentric; brace hard." },
+      { id: "Farmers_Walk", name: "Farmers Walk", target: "Forearms/Grip", sets: 3, reps: null, cue: "GROWTH FOCUS. Heavy dumbbells, 30–40 m per carry, stand tall. The last thing you do — grip failure here is the goal." },
+      { id: "Plate_Pinch", name: "Plate Pinch", target: "Forearms/Grip", sets: 3, reps: null, cue: "Two plates smooth-side out, pinch 30s per hand. Builds the thumb side wrist curls miss." }
     ]
   }
 ];

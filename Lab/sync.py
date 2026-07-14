@@ -2,6 +2,7 @@
 # The phone polls GET /status to show synced records and to auto-unlock its Focus Lock once you've
 # finished your Lab work. CORS is open (localhost tool on your own LAN) so the PWA can fetch it.
 import json
+import os
 import queue
 import socket
 import threading
@@ -9,6 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_PORT = 8765
 APP_STATE_FILE = "app_state.json"  # the phone/PC app state, relayed through the Lab (kept local)
+# finished workouts pushed by the gymmy Android app (kept local, next to this file)
+GYMMY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gymmy_state.json")
 
 # Real-time push: every connected device holds a /events stream; we fan out changes to all of them.
 _subscribers = set()
@@ -41,6 +44,7 @@ def local_ip():
 class _Handler(BaseHTTPRequestHandler):
     snapshot = staticmethod(lambda: {})  # replaced by SyncServer
     app_state = {}                        # last app-state blob a device pushed (shared phone <-> PC)
+    gymmy_state = {}                      # last workout payload gymmy pushed ({"sessions":[...]})
     state_path = APP_STATE_FILE
 
     def _send(self, code, body):
@@ -72,6 +76,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(500, {"ok": False, "error": repr(e)})
         elif path == "/appstate":
             self._send(200, _Handler.app_state or {"updatedAt": 0})
+        elif path == "/gymmy":
+            self._send(200, _Handler.gymmy_state or {"sessions": []})
         elif path == "/events":
             self._sse()
         else:
@@ -96,6 +102,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             # bring a freshly-connected device up to date immediately
             self._sse_write("appstate", _Handler.app_state or {"updatedAt": 0})
+            self._sse_write("gymmy", _Handler.gymmy_state or {"sessions": []})
             try:
                 self._sse_write("labstatus", _Handler.snapshot())
             except Exception:
@@ -130,6 +137,25 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "updatedAt": data.get("updatedAt", 0)})
             except Exception as e:
                 self._send(400, {"ok": False, "error": repr(e)})
+        elif path == "/gymmy":
+            # gymmy replaces its store wholesale each push (last 14 days) — idempotent by design.
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                data = json.loads(raw.decode("utf-8"))
+                if not isinstance(data, dict) or not isinstance(data.get("sessions"), list):
+                    self._send(400, {"ok": False, "error": "expected {sessions:[...]}"})
+                    return
+                _Handler.gymmy_state = data
+                try:
+                    with open(GYMMY_FILE, "w", encoding="utf-8") as f:
+                        json.dump(data, f)
+                except Exception:
+                    pass
+                _broadcast("gymmy", data)  # LockIn devices adopt the workouts in real time
+                self._send(200, {"ok": True, "sessions": len(data["sessions"])})
+            except Exception as e:
+                self._send(400, {"ok": False, "error": repr(e)})
         else:
             self._send(404, {"ok": False, "error": "not found"})
 
@@ -152,6 +178,11 @@ class SyncServer:
                 _Handler.app_state = json.load(f)  # survive a Lab restart
         except Exception:
             _Handler.app_state = {}
+        try:
+            with open(GYMMY_FILE, encoding="utf-8") as f:
+                _Handler.gymmy_state = json.load(f)
+        except Exception:
+            _Handler.gymmy_state = {}
 
     def start(self):
         try:

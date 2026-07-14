@@ -89,6 +89,44 @@ export async function syncState() {
   return pushed ? "pushed" : "";
 }
 
+// ---- gymmy → LockIn: adopt finished workouts pushed to the hub --------------------------------
+// The gymmy Android app POSTs its completed sessions to the hub's /gymmy; we fold them into
+// workoutLogs (gymmy is authoritative per exercise it logged) and tick the day's gym block.
+// Exercise ids are shared between the apps, so history and overload hints just work.
+export function adoptGymmy(payload) {
+  const sessions = payload && payload.sessions;
+  if (!Array.isArray(sessions) || !sessions.length) return false;
+  const st = S.getState();
+  const updates = [];
+  for (const s of sessions) {
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s.date || "") || !Array.isArray(s.sets) || !s.sets.length) continue;
+    const ex = {};
+    for (const t of s.sets) {
+      if (!t || typeof t.exerciseId !== "string" || !t.exerciseId) continue;
+      (ex[t.exerciseId] = ex[t.exerciseId] || []).push({ w: Number(t.weightKg) || 0, r: Number(t.reps) || 0 });
+    }
+    if (!Object.keys(ex).length) continue;
+    const m = /^day\s+([a-e])$/i.exec((s.plan || "").trim());
+    const existing = st.workoutLogs[s.date];
+    const merged = {
+      ...(existing || {}),
+      dayId: m ? m[1].toUpperCase() : (existing && existing.dayId),
+      ex: { ...((existing && existing.ex) || {}), ...ex },
+      gymmy: true
+    };
+    if (JSON.stringify(existing || null) !== JSON.stringify(merged)) updates.push([s.date, merged]);
+  }
+  if (!updates.length) return false;
+  S.update((s2) => {
+    for (const [date, merged] of updates) {
+      s2.workoutLogs[date] = merged;
+      if (!s2.days[date]) s2.days[date] = { blocks: {}, offDay: false, note: "" };
+      s2.days[date].blocks.gym = true; // the lift happened — gymmy said so
+    }
+  });
+  return true;
+}
+
 // ---- real-time link to the Lab (Server-Sent Events) ------------------------------------------
 // The Lab pushes app-state and its own progress the instant they change; we push our edits back the
 // moment they happen. No polling — changes cross devices in well under a second.
@@ -114,6 +152,9 @@ function _openStream() {
           S.applyRemote(remote);
         }
       } catch (_e) {}
+    });
+    _es.addEventListener("gymmy", (e) => {
+      try { adoptGymmy(JSON.parse(e.data)); } catch (_e) {}
     });
     _es.addEventListener("labstatus", (e) => {
       try {

@@ -26,10 +26,14 @@ import runner
 from editor import CodeEditor
 from sync import SyncServer
 from leet import daily_problem
+import expansions
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(HERE, "lab_state.json")
-MODEL = "gemini-2.5-flash"
+# Current stable Flash line-up (verified against ai.google.dev, July 2026). The call
+# walks the chain when a model isn't served for the key and remembers what worked.
+MODELS = ["gemini-3.5-flash", "gemini-2.5-flash"]
+_model_ix = [0]
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"
 
 C = {
@@ -50,28 +54,57 @@ DIFF_COL = {"Easy": C["good"], "Medium": C["warn"], "Hard": C["bad"]}
 def gemini(api_key, system, user, temperature=0.6):
     if not api_key or len(api_key) < 20:
         raise RuntimeError("No API key set — open ⚙ Settings and paste a free Gemini key.")
-    url = ENDPOINT % (MODEL, urllib.parse.quote(api_key))
-    body = {"system_instruction": {"parts": [{"text": system}]},
-            "contents": [{"role": "user", "parts": [{"text": user}]}],
-            # 2.5 Flash thinks by default; disable it so the token budget produces a visible answer.
-            "generationConfig": {"temperature": temperature, "maxOutputTokens": 2048,
-                                 "thinkingConfig": {"thinkingBudget": 0}}}
-    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
-                                headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            data = json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        m = {400: "Bad request — the key looks wrong. Re-check it in Settings.",
-             403: "Access denied (403) — make a fresh free key at aistudio.google.com/apikey.",
-             429: "Rate limit hit (free tier). Wait a minute."}.get(e.code, "Gemini error %s." % e.code)
-        raise RuntimeError(m)
-    except urllib.error.URLError:
-        raise RuntimeError("Network error — are you online?")
-    cands = data.get("candidates") or []
-    if not cands:
-        raise RuntimeError("The tutor returned nothing — rephrase and retry.")
-    return "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", [])).strip()
+    last_err = None
+    for mi in range(_model_ix[0], len(MODELS)):
+        model = MODELS[mi]
+        gen = {"temperature": temperature, "maxOutputTokens": 2048}
+        if model.startswith("gemini-2.5"):
+            # 2.5 thinks by default; disable it so the token budget produces a visible answer.
+            # (3.x models reject this parameter shape, so it's only sent where supported.)
+            gen["thinkingConfig"] = {"thinkingBudget": 0}
+        body = {"system_instruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": user}]}],
+                "generationConfig": gen}
+        req = urllib.request.Request(ENDPOINT % (model, urllib.parse.quote(api_key)),
+                                    data=json.dumps(body).encode("utf-8"),
+                                    headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # 404/400 can be model-specific (not served / request shape) — try the next model.
+            if e.code in (400, 404) and mi < len(MODELS) - 1:
+                last_err = "Model %s unavailable (%s) — trying %s." % (model, e.code, MODELS[mi + 1])
+                continue
+            m = {400: "Bad request — the key looks wrong. Re-check it in Settings.",
+                 403: "Access denied (403) — make a fresh free key at aistudio.google.com/apikey.",
+                 429: "Rate limit hit (free tier). Wait a minute."}.get(e.code, "Gemini error %s." % e.code)
+            raise RuntimeError(m)
+        except urllib.error.URLError:
+            raise RuntimeError("Network error — are you online?")
+        cands = data.get("candidates") or []
+        if not cands:
+            raise RuntimeError("The tutor returned nothing — rephrase and retry.")
+        _model_ix[0] = mi
+        return "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", [])).strip()
+    raise RuntimeError(last_err or "No Gemini model available for this key.")
+
+
+def extract_json(text):
+    """Strict-ish JSON from a model reply: strip fences/chatter, parse or raise."""
+    t = str(text).strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[-1]
+        if t.rstrip().endswith("```"):
+            t = t.rstrip()[:-3]
+    a, b = t.find("{"), t.find("[")
+    start = min(x for x in (a, b) if x != -1) if (a != -1 or b != -1) else -1
+    if start == -1:
+        raise ValueError("no JSON in the reply")
+    end = max(t.rfind("}"), t.rfind("]"))
+    if end <= start:
+        raise ValueError("unterminated JSON in the reply")
+    return json.loads(t[start:end + 1])
 
 
 class Lab(tk.Tk):
@@ -230,6 +263,7 @@ class Lab(tk.Tk):
         self._btn(aibar, "❔ Ask", self.act_ask).pack(side="left", padx=4)
         self._btn(aibar, "📖 Explain", self.act_explain).pack(side="left", padx=4)
         self._btn(aibar, "🏗 Guide me", self.act_guide).pack(side="left", padx=4)
+        self._btn(aibar, "➕ AI practice", self.act_practice).pack(side="left", padx=4)
         self.done_btn = self._btn(aibar, "Mark done", self.act_done, "primary"); self.done_btn.pack(side="right", padx=8)
 
         self.tutor_txt = tk.Text(self.right, bg=C["panel"], fg=C["fg"], relief="flat", font=UI, wrap="word",
@@ -274,6 +308,8 @@ class Lab(tk.Tk):
     # -------- tree --------
     def _populate_tree(self):
         self.tree.insert("", "end", iid="daily", text="  ⭐  LeetCode — Daily")
+        _, tname = self._todays_track()
+        self.tree.insert("", "end", iid="dailyai", text="  ✨  Today's AI lesson — %s" % tname)
         base_order = ["python", "csharp", "c", "asm", "linux", "cyber_high", "cyber_low", "cmd"]
 
         dsa = self.courses["dsa"]
@@ -323,6 +359,9 @@ class Lab(tk.Tk):
             p = daily_problem(datetime.date.today().toordinal())
             self.current = {"kind": "leet", "problem": p, "daily": True}
             self._render_leet(p, daily=True)
+        elif sel == "dailyai":
+            self.current = {"kind": "dailyai"}
+            self._render_dailyai()
         elif sel.startswith("leet:"):
             p = content.BY_ID[sel.split(":", 1)[1]]
             self.current = {"kind": "leet", "problem": p}
@@ -370,6 +409,11 @@ class Lab(tk.Tk):
             w.insert("end", "Examples\n", "h")
             for ex in p["examples"]:
                 w.insert("end", "  " + ex + "\n", "code")
+            # Terse statement? One click gets a full clarification — never a solving hint.
+            w.insert("end", "\n🤖 Explain this problem fully (what's asked — never how to solve it) →\n", ("opt", "explainprob"))
+            w.tag_bind("explainprob", "<Button-1>", lambda _e: self.act_explain_problem())
+            w.tag_bind("explainprob", "<Enter>", lambda _e: w.configure(cursor="hand2"))
+            w.tag_bind("explainprob", "<Leave>", lambda _e: w.configure(cursor=""))
             w.insert("end", "\nWrite %s(...) in the editor, then press ✓ Run Tests.\n" % p["func"], "dim")
         self._set_lesson(draw)
         self._load_editor(p["starter"], "python")
@@ -395,6 +439,18 @@ class Lab(tk.Tk):
                     w.insert("end", sec["p"] + "\n", "b")
                 if sec.get("code"):
                     w.insert("end", sec["code"] + "\n", "code")
+            exp = expansions.for_lesson(tid, idx, L["title"])
+            if exp:
+                w.insert("end", "\n🔎  DEEP DIVE — beyond the lesson\n", "h")
+                for sec in exp.get("sections", []):
+                    if sec.get("h"):
+                        w.insert("end", sec["h"] + "\n", "hooklbl")
+                    if sec.get("body"):
+                        w.insert("end", sec["body"] + "\n", "b")
+                links = exp.get("links") or []
+                if links:
+                    w.insert("end", "Further reading: ", "dim")
+                    w.insert("end", " · ".join("%s (%s)" % (l.get("label", "link"), l.get("url", "")) for l in links) + "\n", "dim")
             if L.get("tell"):
                 w.insert("end", "\n🎯  THE LEETCODE TELL — how to spot it\n", "h")
                 w.insert("end", L["tell"] + "\n", "tell")
@@ -787,6 +843,311 @@ class Lab(tk.Tk):
             rubric = (self.courses[c["tid"]]["lessons"][c["idx"]].get("doThis") or {}).get("aiRubric", rubric)
         self._ai("build_coach", "Requirements: %s\n\nMy current code:\n\n%s\n\nGuide me through the next concrete step." % (rubric, code),
                  echo="[asked to be walked through the next step]")
+
+    def act_explain_problem(self):
+        c = self.current
+        if not c or c["kind"] != "leet":
+            self._tutor("Tutor", "Open a LeetCode problem first.", "dim")
+            return
+        p = c["problem"]
+        user = ("Problem: %s [%s]\n\nStatement:\n%s\n\nExamples:\n%s\n\n"
+                "Explain this problem fully per your rules — clarify only, never solve.") % (
+            p["title"], p["difficulty"], p["statement"], "\n".join(p["examples"]))
+        self._ai("problem_explainer", user, echo="[asked for a full explanation of the problem — no spoilers]")
+
+    # ---- structured (JSON) generation: practice quizzes & the daily AI lesson ----
+
+    def _json_call(self, key, system, user, validate):
+        """Blocking helper for worker threads: ask → parse → validate, one retry that
+        echoes the exact problem back, raise if it still fails. Nothing partial escapes."""
+        prompt = user
+        for attempt in range(2):
+            raw = gemini(key, system, prompt, temperature=0.4)
+            try:
+                parsed = extract_json(raw)
+                problem = validate(parsed)
+            except Exception as e:
+                problem = str(e)
+            if not problem:
+                return parsed
+            if attempt == 0:
+                time.sleep(4)  # free-tier pacing between the retry calls
+                prompt = user + "\n\nYour previous reply was rejected: %s. Reply again with ONLY the corrected valid JSON." % problem
+        raise RuntimeError("The AI couldn't produce valid content (%s). Nothing was kept — try again." % problem)
+
+    @staticmethod
+    def _valid_quiz_item(q):
+        if not isinstance(q, dict) or not isinstance(q.get("q"), str) or not (8 <= len(q["q"]) <= 300):
+            return "each question needs q (8-300 chars)"
+        opts = q.get("options")
+        if not isinstance(opts, list) or len(opts) != 4 or any(not isinstance(o, str) or not o.strip() for o in opts):
+            return "each question needs exactly 4 non-empty options"
+        if len({o.strip().lower() for o in opts}) != 4:
+            return "options must be distinct"
+        if not isinstance(q.get("answer"), int) or not 0 <= q["answer"] <= 3:
+            return "answer must be an integer 0-3"
+        if not isinstance(q.get("why"), str) or len(q["why"]) < 8:
+            return "each question needs a why"
+        return None
+
+    def _valid_practice(self, o):
+        qs = o.get("questions") if isinstance(o, dict) else None
+        if not isinstance(qs, list) or len(qs) != 4:
+            return "questions must be an array of exactly 4"
+        for q in qs:
+            err = self._valid_quiz_item(q)
+            if err:
+                return err
+            if not isinstance(q.get("detail"), str) or len(q["detail"]) < 40:
+                return "each question needs a detailed explanation (detail, 40+ chars)"
+        if len({q["answer"] for q in qs}) == 1:
+            return "answer indices must not all be identical"
+        return None
+
+    def act_practice(self):
+        c = self.current
+        if not c or c["kind"] != "lesson":
+            self._tutor("Tutor", "Open a lesson first — AI practice builds on the lesson you're viewing.", "dim")
+            return
+        if self._busy:
+            return
+        key = self.state.get("apiKey", "")
+        if len(key) < 20:
+            self._tutor("Tutor", "Add a free Gemini key in ⚙ Settings first.", "err")
+            return
+        L = self.courses[c["tid"]]["lessons"][c["idx"]]
+        body = "\n".join((s.get("p") or "") + ("\n" + s["code"] if s.get("code") else "") for s in L.get("read", []))[:2600]
+        user = "Lesson: %s (track: %s)\n\nLESSON CONTENT:\n<<<\n%s\n>>>\n\nGenerate the 4-question practice set with growing difficulty." % (
+            L["title"], c["tid"], body)
+        self._tutor("You", "[asked for an AI practice set — 4 questions, growing difficulty]", "user")
+        self._tutor("Tutor", "building the practice set…", "dim")
+        self._set_busy(True)
+
+        def work():
+            try:
+                data = self._json_call(key, prompts.QUIZ_GEN_SYS, user, self._valid_practice)
+                self.after(0, lambda: (self._ai_done("Practice set ready — answer in the window that just opened."),
+                                       self._open_quiz_win(L["title"], data["questions"])))
+            except Exception as e:
+                self.after(0, lambda e=e: self._ai_done("⚠ " + str(e)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _open_quiz_win(self, title, questions):
+        win = tk.Toplevel(self)
+        win.title("AI practice — " + title)
+        win.configure(bg=C["bg"])
+        win.geometry("680x520")
+        st = {"i": 0, "score": 0}
+        DIFF = {"warm-up": C["good"], "apply": C["warn"], "read": C["warn"], "hard": C["bad"]}
+
+        head = tk.Label(win, bg=C["bg"], fg=C["fg"], font=UIB, anchor="w")
+        head.pack(fill="x", padx=14, pady=(12, 2))
+        qtxt = tk.Label(win, bg=C["bg"], fg=C["fg"], font=UI, wraplength=640, justify="left", anchor="w")
+        qtxt.pack(fill="x", padx=14, pady=(2, 4))
+        code = tk.Label(win, bg=C["panel"], fg=C["fg"], font=MONOS, wraplength=640, justify="left", anchor="w")
+        btns = []
+        for oi in range(4):
+            b = tk.Button(win, font=UI, wraplength=600, justify="left", anchor="w", relief="flat",
+                          bg=C["panel"], fg=C["fg"], activebackground=C["panel"],
+                          command=lambda oi=oi: pick(oi))
+            b.pack(fill="x", padx=14, pady=3)
+            btns.append(b)
+        fb = tk.Label(win, bg=C["bg"], fg=C["fg"], font=UI, wraplength=640, justify="left", anchor="w")
+        fb.pack(fill="x", padx=14, pady=(8, 4))
+        nxt = tk.Button(win, text="Next →", font=UIB, relief="flat", bg=C["panel"], fg=C["fg"], state="disabled")
+        nxt.pack(pady=(2, 12))
+
+        def show():
+            q = questions[st["i"]]
+            head.configure(text="Question %d/4 · %s" % (st["i"] + 1, q.get("difficulty", "")),
+                           fg=DIFF.get(q.get("difficulty"), C["fg"]))
+            qtxt.configure(text=q["q"])
+            if q.get("code"):
+                code.configure(text=q["code"])
+                code.pack(fill="x", padx=14, pady=(0, 6), after=qtxt)
+            else:
+                code.pack_forget()
+            for oi, b in enumerate(btns):
+                b.configure(text="%s)  %s" % ("abcd"[oi], q["options"][oi]), bg=C["panel"], state="normal")
+            fb.configure(text="")
+            nxt.configure(state="disabled")
+
+        def pick(oi):
+            q = questions[st["i"]]
+            for b in btns:
+                b.configure(state="disabled")
+            btns[q["answer"]].configure(bg="#14532d")
+            if oi == q["answer"]:
+                st["score"] += 1
+                self.add_xp(2)
+                self._save_state()
+            else:
+                btns[oi].configure(bg="#5f1d24")
+            fb.configure(text=("✓ " if oi == q["answer"] else "✗ ") + q["why"] + "\n\n" + q.get("detail", ""))
+            nxt.configure(state="normal")
+
+        def advance():
+            st["i"] += 1
+            if st["i"] >= len(questions):
+                head.configure(text="Done — %d/4 correct" % st["score"], fg=C["gold"])
+                qtxt.configure(text="Growing-difficulty practice complete. Generate a fresh set any time — it's new questions every run.")
+                code.pack_forget()
+                for b in btns:
+                    b.pack_forget()
+                fb.configure(text="")
+                nxt.configure(text="Close", command=win.destroy)
+            else:
+                show()
+        nxt.configure(command=advance)
+        show()
+
+    # ---- the daily AI lesson (the track LockIn has in store today) ----
+
+    TRACK_ORDER = ["python", "csharp", "c", "asm", "linux", "cyber_high", "cyber_low", "cmd", "git", "dsa"]
+
+    def _todays_track(self):
+        """Replicates LockIn's productive-day rotation: program days since Jul 14 minus
+        off-days spent before today (read from the relayed app_state.json), mod tracks."""
+        start = datetime.date(2026, 7, 14)
+        today = datetime.date.today()
+        cal = max(0, (today - start).days)
+        off = 0
+        try:
+            with open(os.path.join(HERE, "app_state.json"), encoding="utf-8") as f:
+                spent = (json.load(f).get("offDays") or {}).get("spent") or []
+            for k in spent:
+                d = datetime.date(*[int(x) for x in k.split("-")])
+                if start <= d < today:
+                    off += 1
+        except Exception:
+            pass
+        tid = self.TRACK_ORDER[max(0, cal - off) % len(self.TRACK_ORDER)]
+        if tid in self.courses:
+            name = self.courses[tid]["title"].split("—")[0].strip()
+        else:
+            name = {"git": "Git"}.get(tid, tid)
+        return tid, name
+
+    def _render_dailyai(self):
+        self.test_btn.configure(state="disabled")
+        self.done_btn.configure(state="disabled")
+        tid, tname = self._todays_track()
+        today = datetime.date.today().isoformat()
+        stored = self.state.get("dailyLesson")
+
+        def draw(w):
+            if stored and stored.get("date") == today:
+                w.insert("end", "✨ TODAY'S AI LESSON · %s\n" % stored.get("trackName", tname), "user")
+                w.insert("end", stored["title"] + "\n\n", "h")
+                for sec in stored["sections"]:
+                    w.insert("end", sec["h"] + "\n", "h")
+                    w.insert("end", sec["body"] + "\n\n", "b")
+                w.insert("end", "✅  QUICK CHECK — answer, then reveal\n", "h")
+                for qi, q in enumerate(stored["quiz"]):
+                    w.insert("end", "\n%d. %s\n" % (qi + 1, q["q"]), "b")
+                    for oi, opt in enumerate(q["options"]):
+                        w.insert("end", "   %s) %s\n" % ("abcd"[oi], opt), "opt")
+                    rtag = "dai_rev_%d" % qi
+                    atag = "dai_ans_%d" % qi
+                    w.insert("end", "   [reveal answer]\n", ("opt", rtag))
+                    w.insert("end", "   ✓ %s — %s\n" % ("abcd"[q["answer"]], q["why"]), (atag,))
+                    w.tag_configure(atag, foreground=C["good"], elide=True)
+                    w.tag_bind(rtag, "<Button-1>",
+                               lambda _e, a=atag, r=rtag: (w.configure(state="normal"),
+                                                           w.tag_configure(a, elide=False),
+                                                           w.tag_configure(r, elide=True),
+                                                           w.configure(state="disabled")))
+                    w.tag_bind(rtag, "<Enter>", lambda _e: w.configure(cursor="hand2"))
+                    w.tag_bind(rtag, "<Leave>", lambda _e: w.configure(cursor=""))
+                w.insert("end", "\nA fresh lesson lands here tomorrow — the topic follows LockIn's daily track.\n", "dim")
+            else:
+                w.insert("end", "✨ TODAY'S AI LESSON\n", "user")
+                w.insert("end", "%s — today's track in your LockIn rotation\n\n" % tname, "h")
+                w.insert("end", "Every day the Lab can build you ONE extra lesson for the day's track: outline → "
+                                "sections → quiz, three staged AI calls, each validated before anything is kept.\n\n", "b")
+                w.insert("end", "🤖 Generate today's lesson →\n", ("opt", "genDaily"))
+                w.tag_bind("genDaily", "<Button-1>", lambda _e: self._gen_dailyai())
+                w.tag_bind("genDaily", "<Enter>", lambda _e: w.configure(cursor="hand2"))
+                w.tag_bind("genDaily", "<Leave>", lambda _e: w.configure(cursor=""))
+                if stored:
+                    w.insert("end", "\nYesterday's lesson (%s): %s — generating replaces it.\n"
+                             % (stored.get("date", "?"), stored.get("title", "?")), "dim")
+        self._set_lesson(draw)
+        self._to_tab(0)
+
+    def _valid_daily_outline(self, o):
+        if not isinstance(o, dict) or not isinstance(o.get("title"), str) or not (4 <= len(o["title"]) <= 90):
+            return "title must be a 4-90 char string"
+        secs = o.get("sections")
+        if not isinstance(secs, list) or len(secs) != 3:
+            return "sections must be exactly 3"
+        for s in secs:
+            if not isinstance(s, dict) or not isinstance(s.get("h"), str) or not isinstance(s.get("goal"), str):
+                return "every section needs h and goal strings"
+        return None
+
+    def _valid_daily_sections(self, o):
+        secs = o.get("sections") if isinstance(o, dict) else None
+        if not isinstance(secs, list) or len(secs) != 3:
+            return "sections must be exactly 3"
+        for s in secs:
+            if not isinstance(s, dict) or not isinstance(s.get("h"), str) or not isinstance(s.get("body"), str):
+                return "every section needs h and body"
+            if not (300 <= len(s["body"]) <= 2200):
+                return "every body must be 300-2200 chars of teaching text"
+        return None
+
+    def _valid_daily_quiz(self, o):
+        qs = o.get("quiz") if isinstance(o, dict) else None
+        if not isinstance(qs, list) or len(qs) != 4:
+            return "quiz must be exactly 4 questions"
+        for q in qs:
+            err = self._valid_quiz_item(q)
+            if err:
+                return err
+        return None
+
+    def _gen_dailyai(self):
+        if self._busy:
+            return
+        key = self.state.get("apiKey", "")
+        if len(key) < 20:
+            self._tutor("Tutor", "Add a free Gemini key in ⚙ Settings first.", "err")
+            return
+        tid, tname = self._todays_track()
+        level = "advanced-beginner (he reads code well; new to this track's depths)"
+        self._tutor("Tutor", "Building today's %s lesson — 3 staged calls, ~30s…" % tname, "dim")
+        self._set_busy(True)
+
+        def work():
+            try:
+                outline = self._json_call(key, prompts.DAILY_OUTLINE_SYS,
+                    "Track: %s. Level: %s. Outline one lesson that best advances this track today." % (tname, level),
+                    self._valid_daily_outline)
+                time.sleep(4)
+                secs = self._json_call(key, prompts.DAILY_SECTIONS_SYS,
+                    "Lesson: %s (track %s).\nOutlined sections:\n%s\nWrite each section's body." % (
+                        outline["title"], tname,
+                        "\n".join("%d. %s — %s" % (i + 1, s["h"], s["goal"]) for i, s in enumerate(outline["sections"]))),
+                    self._valid_daily_sections)
+                time.sleep(4)
+                full = "\n\n".join("%s\n%s" % (s["h"], s["body"]) for s in secs["sections"])
+                quiz = self._json_call(key, prompts.DAILY_QUIZ_SYS,
+                    "LESSON TEXT:\n<<<\n%s\n>>>\nWrite the 4-question self-check." % full,
+                    self._valid_daily_quiz)
+                lesson = {"date": datetime.date.today().isoformat(), "track": tid, "trackName": tname,
+                          "title": outline["title"], "sections": secs["sections"], "quiz": quiz["quiz"]}
+
+                def ok():
+                    self.state["dailyLesson"] = lesson
+                    self._save_state()
+                    self._ai_done("✨ \"%s\" is ready — it's open in the lesson pane." % lesson["title"])
+                    if self.current and self.current.get("kind") == "dailyai":
+                        self._render_dailyai()
+                self.after(0, ok)
+            except Exception as e:
+                self.after(0, lambda e=e: self._ai_done("⚠ " + str(e)))
+        threading.Thread(target=work, daemon=True).start()
 
     def act_done(self):
         c = self.current
