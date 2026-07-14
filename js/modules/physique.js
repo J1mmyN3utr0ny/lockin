@@ -1,17 +1,11 @@
-// physique.js — the workout program + a logger that drives progressive overload.
+// physique.js — the Workout tab. Mirrors the user's Gymmy app 1:1 (same six
+// workouts, proper exercise names) and adds a set logger for progressive overload.
 import * as S from "../state.js";
 import { esc, refresh, toast, buzz } from "../ui.js";
-import { days, dayById, weekPlan, philosophy, forearmFix } from "../data/workout_program.js";
+import { days, dayById, weekPlan, philosophy, forearmFix, gymmyApp } from "../data/workout_program.js";
 
-// pick which day the user is viewing (persisted lightly in the hash-less UI via a module var)
+// pick which workout the user is viewing (persisted lightly in the hash-less UI via a module var)
 let viewDayId = null;
-
-function topRep(reps) {
-  const m = String(reps).match(/(\d+)\s*-\s*(\d+)/);
-  if (m) return Number(m[2]);
-  const s = String(reps).match(/(\d+)/);
-  return s ? Number(s[1]) : null;
-}
 
 // Most recent prior log of an exercise (before today, else today's).
 function lastLog(exId) {
@@ -26,12 +20,9 @@ function lastLog(exId) {
 
 function overloadHint(ex) {
   const last = lastLog(ex.id);
-  if (!last) return { text: "First time — find a weight where the top set is tough but clean.", cls: "" };
-  const top = topRep(ex.reps);
+  if (!last) return { text: "First time — find a weight where the last set is tough but clean.", cls: "" };
   const summary = last.sets.map((s) => `${s.w}×${s.r}`).join(", ");
-  const allHitTop = top && last.sets.length >= ex.sets && last.sets.every((s) => Number(s.r) >= top);
-  if (allHitTop) return { text: `Last: ${summary}. You hit the top of the range everywhere → add a little load today. 📈`, cls: "good" };
-  return { text: `Last: ${summary}. Beat it by a rep or a small load.`, cls: "" };
+  return { text: `Last: ${summary}. Beat it by a rep or a small load. 📈`, cls: "good" };
 }
 
 function addSet(dayId, exId, w, r) {
@@ -58,34 +49,44 @@ export default {
   render(view) {
     const key = S.todayKey();
     const suggestedId = weekPlan[S.dow(key)];
-    const activeId = viewDayId || suggestedId || "A";
+    const activeId = viewDayId || suggestedId || "push";
     const day = dayById(activeId);
     const todayLog = S.getState().workoutLogs[key] || { ex: {} };
+    const suggested = suggestedId ? dayById(suggestedId) : null;
+    const onAndroid = /android/i.test(navigator.userAgent);
 
     view.innerHTML = `
+      <div class="card tight" style="border-color:rgba(52,211,153,.35)">
+        <div class="row between">
+          <b>🔗 Connected to Gymmy</b>
+          ${onAndroid ? `<a class="btn sm" href="${gymmyApp.intentUrl}">Open Gymmy ↗</a>` : ""}
+        </div>
+        <p class="small muted" style="margin:6px 0 0">These are your Gymmy workouts, recreated exactly — same names, same exercises. Log sets here or in Gymmy; Gymmy stays the source of truth.</p>
+      </div>
+
       <div class="card tight" style="border-color:rgba(251,113,133,.35)">
         <b>🏋️ Forearm fix — ${esc(forearmFix.title)}</b>
         <p class="small muted" style="margin:6px 0 8px">${esc(forearmFix.why)}</p>
         <ul class="list-plain small">${forearmFix.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
       </div>
 
-      <div class="section-title">Choose day ${suggestedId ? `· today = Day ${suggestedId}` : "· today = rest"}</div>
+      <div class="section-title">Choose workout ${suggested ? `· today = ${esc(suggested.name)}` : "· today = rest"}</div>
       <div class="row wrap" style="gap:8px; margin-bottom:12px">
-        ${days.map((d) => `<button class="btn sm ${d.id === activeId ? "primary" : ""}" data-day="${d.id}">Day ${d.id}</button>`).join("")}
+        ${days.map((d) => `<button class="btn sm ${d.id === activeId ? "primary" : ""}" data-day="${d.id}">${esc(d.name)}</button>`).join("")}
       </div>
 
       <div class="card">
         <div class="row between">
-          <h2 style="margin:0">Day ${day.id} — ${esc(day.name)}</h2>
+          <h2 style="margin:0">${esc(day.name)}</h2>
           <span class="pill accent">${esc(day.focus)}</span>
         </div>
-        <p class="small muted" style="margin-top:6px">Warm-up: ${esc(day.warmup)}</p>
+        <p class="small muted" style="margin-top:6px">Warm-up: 5 min easy cardio + 1-2 light ramp-up sets on the first lift.</p>
       </div>
 
       <div id="ex-list"></div>
 
       <div class="card tight">
-        <div class="section-title">Why this program</div>
+        <div class="section-title">${esc(philosophy.title)}</div>
         <ul class="list-plain small muted">${philosophy.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
       </div>`;
 
@@ -100,11 +101,10 @@ export default {
         <div class="card tight">
           <div class="row between">
             <div><b>${esc(ex.name)}</b> <span class="tag">${esc(ex.target)}</span></div>
-            <span class="pill">${ex.sets}×${esc(ex.reps)}</span>
+            <span class="pill">${esc(ex.equip)}</span>
           </div>
           ${ex.straps ? `<span class="pill warn" style="margin-top:6px">🎗️ straps on</span>` : ""}
-          <p class="small muted" style="margin:8px 0 6px">💡 ${esc(ex.cue)}</p>
-          <p class="small ${hint.cls === "good" ? "" : "dim"}" style="color:${hint.cls === "good" ? "var(--good)" : ""}">${esc(hint.text)}</p>
+          <p class="small ${hint.cls === "good" ? "" : "dim"}" style="margin:8px 0 6px; color:${hint.cls === "good" ? "var(--good)" : ""}">${esc(hint.text)}</p>
           <div class="row wrap" style="gap:6px; margin:8px 0">
             ${sets.map((s) => `<span class="pill accent">${s.w}kg × ${s.r}</span>`).join("") || `<span class="small dim">no sets logged yet</span>`}
           </div>

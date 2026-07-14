@@ -1,97 +1,112 @@
-// workout_program.js — 5-day full-gym split tuned to the user's goals:
-// GROW: chest, legs (weakest), abs, and START obliques. MAINTAIN: biceps (already strong).
-// FIX: forearms hijacking every lift. See `forearmFix` for the mechanism used throughout.
+// workout_program.js — LockIn is connected to Gymmy (the user's own Android gym app).
+// The six workouts below are recreated 1:1 from Gymmy's built-in workouts
+// (WorkoutTemplates.kt + assets/exercises.json in the gymmy repo): same names,
+// same exercises, same order, proper exercise names from Gymmy's library.
+// Gymmy is the source of truth — if a workout changes there, mirror it here.
+
+export const gymmyApp = {
+  name: "Gymmy",
+  package: "com.yaniv.gymmy",
+  // Launches the installed Gymmy app from the PWA on Android.
+  intentUrl: "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.yaniv.gymmy;end"
+};
 
 export const philosophy = {
-  title: "How this program is built for you",
+  title: "Connected to Gymmy",
   points: [
-    "Legs are trained twice a week (Day B + Day D) because they're the biggest gap.",
-    "Chest gets a heavy day and a second volume day (Day A + Day E).",
-    "Abs are hit 3×/week; obliques get dedicated loaded work (new for you) on Day D + Day E.",
-    "Biceps are maintained, not chased — one focused slot on Day C, done with a grip that spares forearms.",
-    "Progressive overload is the whole game: beat last week's log by a rep or a small load, every session."
+    "These are your Gymmy workouts, recreated exactly — same six names, same exercises, same order.",
+    "Gymmy stays the source of truth: build, edit and browse exercises there; LockIn only schedules and tracks the habit.",
+    "Sets/reps are yours to set (like in Gymmy): ~3-4 sets on big barbell lifts, 2-3 on isolations.",
+    "Progressive overload is still the whole game: beat last session by a rep or a small load, every time.",
+    "Evening sessions (~20:00) — fuel with the 19:00 snack, then dinner is your post-workout meal."
   ]
 };
 
-// The core fix for "I only feel my forearms."
+// The core fix for "I only feel my forearms." (Coaching overlay — doesn't change the workouts.)
 export const forearmFix = {
   title: "Stop the forearm takeover",
   why: "Your forearms fail/pump first because they carry the grip on every pull and curl, so the target muscle never gets fully loaded.",
   rules: [
-    "Use lifting straps on ALL back/pull work (pulldowns, rows, RDLs). The lats/hamstrings should quit first — not your grip.",
-    "Prefer machines & cables for chest (machine press, pec deck, cable fly). Less stabilizing grip = more chest.",
+    "Use lifting straps on ALL back/pull work (pullups, rows, pulldowns, RDLs, deadlifts). The lats/hamstrings should quit first — not your grip.",
     "On curls, cue 'drive the elbow, relax the hand'. Think of your hand as a hook, not a gripper.",
-    "Pre-exhaust the target: do the isolation (fly / pec deck) BEFORE the press so the chest is the limiter.",
+    "On presses, grip only as hard as needed to control the bar — drive with the chest/shoulders.",
     "Cut direct forearm/grip work to near zero this block — they're already ahead."
   ]
 };
 
-// Each exercise: id, name, target, sets, reps (rep range), straps, cue.
+// Each exercise mirrors a Gymmy library entry: id + name are Gymmy's own
+// (assets/exercises.json), target = its primary muscle, equip = its equipment.
+// `straps` is LockIn's forearm-fix overlay, not Gymmy data.
 export const days = [
   {
-    id: "A", name: "Chest + Abs", focus: "Chest (heavy) · Abs",
-    warmup: "5 min bike + arm circles, then 2 light warmup sets on the first press.",
+    id: "push", name: "Push", focus: "Chest · shoulders · triceps",
     exercises: [
-      { id: "A1", name: "Pec deck (pre-exhaust)", target: "Chest", sets: 3, reps: "12-15", cue: "Squeeze hands together with your chest, not your arms. This tires the chest first." },
-      { id: "A2", name: "Incline machine / Smith press", target: "Upper chest", sets: 4, reps: "8-12", cue: "Elbows ~45°. Drive with the chest; hands are just hooks on the bar." },
-      { id: "A3", name: "Flat machine chest press", target: "Chest", sets: 3, reps: "10-12", cue: "Machine = no grip fatigue. Full stretch at the bottom." },
-      { id: "A4", name: "Cable fly (high-to-low)", target: "Lower chest", sets: 3, reps: "12-15", cue: "Long arc, meet at the belt line, 1s squeeze." },
-      { id: "A5", name: "Cable crunch", target: "Abs", sets: 3, reps: "12-15", cue: "Round the spine down toward the pelvis — crunch, don't hip-hinge." },
-      { id: "A6", name: "Hanging / captain's-chair leg raise", target: "Lower abs", sets: 3, reps: "10-15", cue: "Curl the pelvis up. Straps optional so grip isn't the limiter." }
+      { id: "Barbell_Bench_Press_-_Medium_Grip", name: "Barbell Bench Press - Medium Grip", target: "Chest", equip: "barbell" },
+      { id: "Barbell_Incline_Bench_Press_-_Medium_Grip", name: "Barbell Incline Bench Press - Medium Grip", target: "Chest", equip: "barbell" },
+      { id: "Barbell_Shoulder_Press", name: "Barbell Shoulder Press", target: "Shoulders", equip: "barbell" },
+      { id: "Side_Lateral_Raise", name: "Side Lateral Raise", target: "Shoulders", equip: "dumbbell" },
+      { id: "Triceps_Pushdown", name: "Triceps Pushdown", target: "Triceps", equip: "cable" },
+      { id: "Dips_-_Triceps_Version", name: "Dips - Triceps Version", target: "Triceps", equip: "bodyweight" }
     ]
   },
   {
-    id: "B", name: "Legs (Quad focus)", focus: "Quads · Glutes · Calves",
-    warmup: "5 min bike, bodyweight squats, leg-extension warmup set.",
+    id: "pull", name: "Pull", focus: "Back · biceps",
     exercises: [
-      { id: "B1", name: "Hack squat or Barbell squat", target: "Quads", sets: 4, reps: "8-12", cue: "Full depth, control the descent 2-3s. This is your #1 leg builder." },
-      { id: "B2", name: "Leg press", target: "Quads/Glutes", sets: 3, reps: "10-15", cue: "Feet mid-platform. Don't lock out hard; keep tension." },
-      { id: "B3", name: "Romanian deadlift", target: "Hamstrings", sets: 3, reps: "8-12", straps: true, cue: "STRAPS ON. Hinge, soft knees, feel the hamstring stretch. Grip must not be the limiter." },
-      { id: "B4", name: "Leg extension", target: "Quads", sets: 3, reps: "12-15", cue: "1s squeeze at the top. Great finisher for the teardrop." },
-      { id: "B5", name: "Seated leg curl", target: "Hamstrings", sets: 3, reps: "12-15", cue: "Control the negative." },
-      { id: "B6", name: "Standing calf raise", target: "Calves", sets: 4, reps: "12-20", cue: "Full stretch at the bottom, pause at the top." }
+      { id: "Pullups", name: "Pullups", target: "Lats", equip: "bodyweight", straps: true },
+      { id: "Bent_Over_Barbell_Row", name: "Bent Over Barbell Row", target: "Mid-back", equip: "barbell", straps: true },
+      { id: "Wide-Grip_Lat_Pulldown", name: "Wide-Grip Lat Pulldown", target: "Lats", equip: "cable", straps: true },
+      { id: "Face_Pull", name: "Face Pull", target: "Rear delts", equip: "cable" },
+      { id: "Barbell_Curl", name: "Barbell Curl", target: "Biceps", equip: "barbell" },
+      { id: "Hammer_Curls", name: "Hammer Curls", target: "Biceps", equip: "dumbbell" }
     ]
   },
   {
-    id: "C", name: "Back + Biceps", focus: "Back (straps) · Biceps (maintain)",
-    warmup: "Band pull-aparts, light lat-pulldown set.",
+    id: "lower", name: "Lower", focus: "Quads · hamstrings · calves",
     exercises: [
-      { id: "C1", name: "Lat pulldown", target: "Lats", sets: 4, reps: "8-12", straps: true, cue: "STRAPS. Pull with the elbows to the hips; imagine your hands are just hooks." },
-      { id: "C2", name: "Chest-supported row", target: "Mid-back", sets: 3, reps: "10-12", straps: true, cue: "STRAPS. Squeeze shoulder blades; don't yank with the arms." },
-      { id: "C3", name: "Seated cable row (neutral)", target: "Back", sets: 3, reps: "10-12", straps: true, cue: "STRAPS. Chest up, drive elbows back." },
-      { id: "C4", name: "Face pull", target: "Rear delts", sets: 3, reps: "15-20", cue: "Rope to forehead, external rotation. Posture insurance." },
-      { id: "C5", name: "Incline DB curl", target: "Biceps", sets: 3, reps: "10-12", cue: "Elbow drives the rep; keep wrist neutral and grip loose to keep forearms out of it." },
-      { id: "C6", name: "Cable curl (bar)", target: "Biceps", sets: 2, reps: "12-15", cue: "Constant tension. Maintenance only — don't turn this into a forearm day." }
+      { id: "Barbell_Squat", name: "Barbell Squat", target: "Quads", equip: "barbell" },
+      { id: "Romanian_Deadlift", name: "Romanian Deadlift", target: "Hamstrings", equip: "barbell", straps: true },
+      { id: "Leg_Press", name: "Leg Press", target: "Quads", equip: "machine" },
+      { id: "Lying_Leg_Curls", name: "Lying Leg Curls", target: "Hamstrings", equip: "machine" },
+      { id: "Leg_Extensions", name: "Leg Extensions", target: "Quads", equip: "machine" },
+      { id: "Standing_Calf_Raises", name: "Standing Calf Raises", target: "Calves", equip: "machine" }
     ]
   },
   {
-    id: "D", name: "Legs #2 + Obliques", focus: "Posterior chain · Obliques (new)",
-    warmup: "5 min incline walk, hip openers.",
+    id: "upper", name: "Upper", focus: "Chest · back · shoulders · arms",
     exercises: [
-      { id: "D1", name: "Bulgarian split squat", target: "Quads/Glutes", sets: 3, reps: "8-12 /leg", cue: "Front-foot pressure, tall torso. Balance + growth for lagging legs." },
-      { id: "D2", name: "Hip thrust", target: "Glutes", sets: 3, reps: "10-12", cue: "Full lockout, 1s squeeze. Builds the shape the legs are missing." },
-      { id: "D3", name: "Lying leg curl", target: "Hamstrings", sets: 3, reps: "10-12", cue: "No hip movement; hamstrings only." },
-      { id: "D4", name: "Walking lunge", target: "Legs", sets: 3, reps: "10-12 /leg", straps: true, cue: "STRAPS if using DBs, so grip doesn't cap the set." },
-      { id: "D5", name: "Cable woodchopper", target: "Obliques", sets: 3, reps: "12-15 /side", cue: "Rotate from the torso, not the arms. This is your new oblique work." },
-      { id: "D6", name: "Suitcase carry / side plank", target: "Obliques/Core", sets: 3, reps: "30-40s", cue: "Stay square; resist the lean. Anti-rotation builds the sides." }
+      { id: "Barbell_Bench_Press_-_Medium_Grip", name: "Barbell Bench Press - Medium Grip", target: "Chest", equip: "barbell" },
+      { id: "Bent_Over_Barbell_Row", name: "Bent Over Barbell Row", target: "Mid-back", equip: "barbell", straps: true },
+      { id: "Barbell_Shoulder_Press", name: "Barbell Shoulder Press", target: "Shoulders", equip: "barbell" },
+      { id: "Wide-Grip_Lat_Pulldown", name: "Wide-Grip Lat Pulldown", target: "Lats", equip: "cable", straps: true },
+      { id: "Barbell_Curl", name: "Barbell Curl", target: "Biceps", equip: "barbell" },
+      { id: "Triceps_Pushdown", name: "Triceps Pushdown", target: "Triceps", equip: "cable" }
     ]
   },
   {
-    id: "E", name: "Shoulders + Chest #2 + Abs", focus: "Delts · Chest volume · Abs",
-    warmup: "Band dislocates, light lateral raises.",
+    id: "abs", name: "Abs", focus: "Core",
     exercises: [
-      { id: "E1", name: "Machine / DB shoulder press", target: "Front/Side delts", sets: 4, reps: "8-12", cue: "Press slightly forward of the ears; controlled." },
-      { id: "E2", name: "Lateral raise", target: "Side delts", sets: 4, reps: "12-20", cue: "Lead with the elbow; light and strict for width." },
-      { id: "E3", name: "Incline cable/machine press", target: "Upper chest", sets: 3, reps: "10-12", cue: "Second chest hit of the week — grip-light selection." },
-      { id: "E4", name: "Pec deck", target: "Chest", sets: 3, reps: "12-15", cue: "Pure chest squeeze, no grip demand." },
-      { id: "E5", name: "Rear-delt fly", target: "Rear delts", sets: 3, reps: "15-20", cue: "Balances all the pressing." },
-      { id: "E6", name: "Ab wheel / weighted decline crunch", target: "Abs", sets: 3, reps: "8-15", cue: "Slow eccentric; brace hard." }
+      { id: "Hanging_Leg_Raise", name: "Hanging Leg Raise", target: "Abs", equip: "bodyweight" },
+      { id: "Crunches", name: "Crunches", target: "Abs", equip: "bodyweight" },
+      { id: "Cable_Crunch", name: "Cable Crunch", target: "Abs", equip: "cable" },
+      { id: "Plank", name: "Plank", target: "Abs", equip: "bodyweight" },
+      { id: "Russian_Twist", name: "Russian Twist", target: "Abs", equip: "bodyweight" }
+    ]
+  },
+  {
+    id: "full", name: "Full body", focus: "Whole-body compound session",
+    exercises: [
+      { id: "Barbell_Squat", name: "Barbell Squat", target: "Quads", equip: "barbell" },
+      { id: "Barbell_Bench_Press_-_Medium_Grip", name: "Barbell Bench Press - Medium Grip", target: "Chest", equip: "barbell" },
+      { id: "Barbell_Deadlift", name: "Barbell Deadlift", target: "Lower back", equip: "barbell", straps: true },
+      { id: "Wide-Grip_Lat_Pulldown", name: "Wide-Grip Lat Pulldown", target: "Lats", equip: "cable", straps: true },
+      { id: "Barbell_Shoulder_Press", name: "Barbell Shoulder Press", target: "Shoulders", equip: "barbell" }
     ]
   }
 ];
 
 export function dayById(id) { return days.find((d) => d.id === id); }
 
-// Which workout to suggest for a given weekday (0=Sun..6=Sat).
-// 5 lifting days: Sun A, Mon B, Tue C, Wed D (lighter after course), Thu E, Fri light/optional, Sat rest.
-export const weekPlan = { 0: "A", 1: "B", 2: "C", 3: "D", 4: "E", 5: null, 6: null };
+// Which workout on which weekday (0=Sun..6=Sat). Gym is the ~20:00 evening slot.
+// Sun Push, Mon Pull, Tue Lower, Wed Upper, Thu Abs (light), Fri Full body
+// (optional, midday — gyms close early before Shabbat), Sat rest.
+export const weekPlan = { 0: "push", 1: "pull", 2: "lower", 3: "upper", 4: "abs", 5: "full", 6: null };

@@ -70,7 +70,8 @@ function gymBlock(time, dow) {
   const id = weekPlan[dow];
   if (!id) return { id: "gym", time, cat: "gym", title: "Rest / mobility", sub: "No lift scheduled — walk, stretch, recover.", link: L.gym };
   const d = dayById(id);
-  return { id: "gym", time, cat: "gym", title: `Gym · Day ${id} — ${d.name}`, sub: d.focus, link: L.gym };
+  const optional = dow === 5 ? " · optional — skip guilt-free if the week was heavy" : "";
+  return { id: "gym", time, cat: "gym", title: `Gym · ${d.name}`, sub: `${d.focus} — same workout as in Gymmy${optional}`, link: L.gym };
 }
 
 function studyMathBlock(time) {
@@ -90,15 +91,15 @@ function deepWorkDay(dateKey, dow) {
     { id: "cyber", time: "13:00", cat: "cyber", title: `Cyber — ${t.icon} ${t.name}`, sub: "In LockIn Lab (desktop): read the lesson, build it, get your code checked. 🔒 Focus is Lab-gated.", link: L.cyber },
     { id: "leet", time: "13:45", cat: "leet", title: "LeetCode — daily", sub: "Solve today's problem in the Lab (a Hard lands ~weekly). Finishing it unlocks your phone.", link: L.cyber },
     { id: "vocab", time: "14:30", cat: "pet", title: "Hebrew + English vocab", sub: "15+ new words. Recognition compounds fast.", link: L.pet },
-    { id: "snack", time: "15:15", cat: "food", title: "Snack + short rest", sub: "Pre-gym fuel — eat, then head out.", link: L.food },
-    travelBlock("togym", "15:40", TRAVEL.gym, "Head to the gym"),
-    gymBlock("16:00", dow),
-    travelBlock("homegym", "17:10", TRAVEL.gym, "Head home"),
-    { id: "dinner", time: "17:45", cat: "food", title: "Dinner — biggest meal, ~45g protein", sub: "The meal that builds the physique.", link: L.food },
     S.daysBetween(S.PROJECT_START, dateKey) >= 0
-      ? { id: "capstone", time: "18:45", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
-      : { id: "petpractice", time: "18:45", cat: "pet", title: `PET practice — ${petFocusFor(dateKey)}`, sub: "One focused set. Understand the path, not just the answer.", link: L.pet },
-    { id: "free", time: "19:45", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
+      ? { id: "capstone", time: "15:15", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
+      : { id: "petpractice", time: "15:15", cat: "pet", title: `PET practice — ${petFocusFor(dateKey)}`, sub: "One focused set. Understand the path, not just the answer.", link: L.pet },
+    { id: "free", time: "16:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
+    { id: "snack", time: "19:00", cat: "food", title: "Snack — pre-gym fuel", sub: "~25g protein about an hour before you lift.", link: L.food },
+    travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym"),
+    gymBlock("20:00", dow),
+    travelBlock("homegym", "21:15", TRAVEL.gym, "Head home"),
+    { id: "dinner", time: "21:40", cat: "food", title: "Dinner — biggest meal, ~45g protein", sub: "Post-workout — the meal that builds the physique.", link: L.food },
     { id: "wind", time: "22:45", cat: "wind", title: "Wind-down — screens dim, prep tomorrow", sub: "Lay out gym clothes, set breakfast.", link: L.sleep },
     { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "Protecting this is the whole reset.", link: L.sleep }
   ];
@@ -110,16 +111,17 @@ function courseDay(dateKey, dow) {
     { id: "wake", time: "07:00", cat: "sleep", title: "Wake · water · quick breakfast", sub: "Course day — up a little earlier to make the 9:00 start.", link: L.sleep },
     { id: "commute", time: "08:15", cat: "travel", title: "Head to PET course", sub: `About ${TRAVEL.course} min — bring water + a snack.` },
     { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Sundays & Wednesdays. This is your main PET engine.", link: L.pet },
-    { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class — the gym is a 10-min walk from here.", link: L.food },
-    travelBlock("togym", "14:40", TRAVEL.courseToGym, "Walk to the gym", "walk"),
-    gymBlock("14:50", dow),
-    travelBlock("homegym", "16:00", TRAVEL.gym, "Head home"),
-    { id: "leet", time: "16:20", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
-    { id: "light", time: "17:00", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
-    { id: "dinner", time: "18:15", cat: "food", title: "Dinner — ~45g protein", sub: "", link: L.food },
-    { id: "homework", time: "19:00", cat: "pet", title: "PET homework — from today's class", sub: "Do it while it's fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
-    { id: "review", time: "19:45", cat: "pet", title: "Review notes + vocab", sub: "Lock in today's course material.", link: L.pet },
-    { id: "free", time: "20:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Recover. Big day done." },
+    { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class.", link: L.food },
+    travelBlock("homecourse", "14:40", TRAVEL.course, "Head home"),
+    { id: "leet", time: "15:30", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
+    { id: "light", time: "16:15", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
+    { id: "homework", time: "17:15", cat: "pet", title: "PET homework — from today's class", sub: "Do it while it's fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
+    { id: "review", time: "18:00", cat: "pet", title: "Review notes + vocab", sub: "Lock in today's course material.", link: L.pet },
+    { id: "dinner", time: "18:40", cat: "food", title: "Dinner — ~45g protein", sub: "Fuel for tonight's session — eat well, you lift at 20:00.", link: L.food },
+    travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym"),
+    gymBlock("20:00", dow),
+    travelBlock("homegym", "21:15", TRAVEL.gym, "Head home"),
+    { id: "free", time: "21:40", cat: "free", free: true, title: "FREE TIME — protected", sub: "Post-gym shake, then recover. Big day done." },
     { id: "wind", time: "22:45", cat: "wind", title: "Wind-down", sub: "Prep for tomorrow.", link: L.sleep },
     { id: "sleep", time: "23:30", cat: "sleep", title: "Sleep", sub: "", link: L.sleep }
   ];

@@ -14,10 +14,10 @@ export const mealSlots = [
     "Tuna pasta (2 cans + pasta + olive oil)", "Chicken breast + rice + veg",
     "Tuna sandwich x2 (whole meal) + egg", "Rice bowl + 2 eggs + tuna"
   ] },
-  { id: "s2", label: "Snack", time: "16:30 (pre/post gym)", target: "~25g protein", ideas: [
+  { id: "s2", label: "Snack", time: "19:00 (pre-gym fuel)", target: "~25g protein", ideas: [
     "Protein shake + oats", "2 tuna cans on bread", "Greek yogurt + fruit", "Cottage cheese + granola"
   ] },
-  { id: "m3", label: "Dinner", time: "18:30 (biggest meal)", target: "~45g protein", ideas: [
+  { id: "m3", label: "Dinner", time: "~21:30 (post-gym, biggest meal)", target: "~45g protein", ideas: [
     "Chicken/beef + rice/potato + salad", "Big tuna+egg rice bowl", "Family dinner — eat well and go back for seconds",
     "Pasta + tuna + cheese + side of yogurt"
   ] }
