@@ -22,7 +22,9 @@ function overloadHint(ex) {
   const last = lastLog(ex.id);
   if (!last) return { text: "First time — find a weight where the last set is tough but clean.", cls: "" };
   const summary = last.sets.map((s) => `${s.w}×${s.r}`).join(", ");
-  return { text: `Last: ${summary}. Beat it by a rep or a small load. 📈`, cls: "good" };
+  const allHitTarget = ex.reps && last.sets.length >= ex.sets && last.sets.every((s) => Number(s.r) >= ex.reps);
+  if (allHitTarget) return { text: `Last: ${summary}. You hit the target everywhere → add a little load today. 📈`, cls: "good" };
+  return { text: `Last: ${summary}. Beat it by a rep or a small load.`, cls: "" };
 }
 
 function addSet(dayId, exId, w, r) {
@@ -49,7 +51,7 @@ export default {
   render(view) {
     const key = S.todayKey();
     const suggestedId = weekPlan[S.dow(key)];
-    const activeId = viewDayId || suggestedId || "push";
+    const activeId = viewDayId || suggestedId || "A";
     const day = dayById(activeId);
     const todayLog = S.getState().workoutLogs[key] || { ex: {} };
     const suggested = suggestedId ? dayById(suggestedId) : null;
@@ -61,7 +63,7 @@ export default {
           <b>🔗 Connected to Gymmy</b>
           ${onAndroid ? `<a class="btn sm" href="${gymmyApp.intentUrl}">Open Gymmy ↗</a>` : ""}
         </div>
-        <p class="small muted" style="margin:6px 0 0">These are your Gymmy workouts, recreated exactly — same names, same exercises. Log sets here or in Gymmy; Gymmy stays the source of truth.</p>
+        <p class="small muted" style="margin:6px 0 0">This program lives inside Gymmy too — the built-in <b>Day A–E</b> templates (Plans tab) are these exact workouts, targets included. Tap one there to create it as a plan. Log sets in either app.</p>
       </div>
 
       <div class="card tight" style="border-color:rgba(251,113,133,.35)">
@@ -80,7 +82,7 @@ export default {
           <h2 style="margin:0">${esc(day.name)}</h2>
           <span class="pill accent">${esc(day.focus)}</span>
         </div>
-        <p class="small muted" style="margin-top:6px">Warm-up: 5 min easy cardio + 1-2 light ramp-up sets on the first lift.</p>
+        <p class="small muted" style="margin-top:6px">Warm-up: ${esc(day.warmup)}</p>
       </div>
 
       <div id="ex-list"></div>
@@ -101,10 +103,11 @@ export default {
         <div class="card tight">
           <div class="row between">
             <div><b>${esc(ex.name)}</b> <span class="tag">${esc(ex.target)}</span></div>
-            <span class="pill">${esc(ex.equip)}</span>
+            <span class="pill">${ex.reps ? `${ex.sets}×${ex.reps}` : `${ex.sets} sets`}</span>
           </div>
           ${ex.straps ? `<span class="pill warn" style="margin-top:6px">🎗️ straps on</span>` : ""}
-          <p class="small ${hint.cls === "good" ? "" : "dim"}" style="margin:8px 0 6px; color:${hint.cls === "good" ? "var(--good)" : ""}">${esc(hint.text)}</p>
+          <p class="small muted" style="margin:8px 0 6px">💡 ${esc(ex.cue)}</p>
+          <p class="small ${hint.cls === "good" ? "" : "dim"}" style="margin:0 0 6px; color:${hint.cls === "good" ? "var(--good)" : ""}">${esc(hint.text)}</p>
           <div class="row wrap" style="gap:6px; margin:8px 0">
             ${sets.map((s) => `<span class="pill accent">${s.w}kg × ${s.r}</span>`).join("") || `<span class="small dim">no sets logged yet</span>`}
           </div>

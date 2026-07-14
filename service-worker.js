@@ -1,5 +1,5 @@
 /* LockIn service worker — offline-first precache of the app shell. */
-const VERSION = "lockin-v20";
+const VERSION = "lockin-v21";
 const ASSETS = [
   "./",
   "./index.html",
@@ -50,7 +50,11 @@ const ASSETS = [
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(VERSION).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(VERSION)
+      // cache:"reload" bypasses the HTTP cache — otherwise a new SW version can
+      // precache STALE copies of the very files the version bump was meant to ship.
+      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
   );
 });
 
