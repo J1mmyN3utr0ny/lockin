@@ -224,6 +224,18 @@ label.field { display: block; font-size: 12px; color: var(--muted); margin-botto
 .block.chained:not(.u-last) { border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; }
 .block.chained.u-last { margin-bottom: 9px; }
 
+/* Day-preview rows — any past day is tickable here, not just today */
+.pvrow { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.pvbar { width: 4px; align-self: stretch; border-radius: 3px; flex: none; min-height: 26px; }
+.pvtime { min-width: 46px; flex: none; color: var(--accent-2); font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pvbody { flex: 1; min-width: 0; }
+.pvt { font-weight: 700; font-size: 13.5px; }
+.pvrow.done { opacity: .55; }
+.pvrow.done .pvt { text-decoration: line-through; text-decoration-color: var(--dim); }
+.pvrow .chk { width: 28px; height: 28px; font-size: 14px; }
+.pvrow.done .chk { background: var(--good); border-color: var(--good); color: #06281c; }
+.pvghost { flex: none; width: 28px; text-align: center; color: var(--good); font-weight: 900; }
+
 /* 🔔 manager notes */
 .bell { position: relative; }
 .bell-badge { position: absolute; top: -5px; right: -5px; background: #ef4444; color: #fff; font-size: 9px; font-weight: 800; border-radius: 8px; padding: 1px 4px; line-height: 1.25; }

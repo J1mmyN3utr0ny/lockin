@@ -1,5 +1,5 @@
 /* LockIn service worker — offline-first precache of the app shell. */
-const VERSION = "lockin-v24";
+const VERSION = "lockin-v25";
 const ASSETS = [
   "./",
   "./index.html",

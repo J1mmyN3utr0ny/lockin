@@ -68,6 +68,29 @@ function gymBlock(time, dow) {
   return { id: "gym", time, cat: "gym", title: `Gym · ${d.name}`, sub: `${d.focus} — same workout as in Gymmy${optional}`, link: L.gym, group: "gym" };
 }
 
+// PET work only exists while the exam is still ahead (the course itself stops at EXAM_DATE).
+// Afterwards every one of those minutes rolls into the capstone / portfolio build.
+function petLive(dateKey) { return S.daysBetween(dateKey, S.EXAM_DATE) >= 0; }
+
+const PORTFOLIO_SUB = "One stage of your résumé ladder (Learn → Portfolio). Use the 🏗 Build guide when you're actively writing.";
+
+// The 14:30–17:15 stretch of a deep-work day: PET homework + course-site drilling while the
+// exam is live, otherwise one long build session. Free time starts at 17:15 either way.
+function petAfternoon(dateKey) {
+  if (petLive(dateKey)) {
+    return [
+      { id: "pethw", time: "14:30", cat: "pet", title: "PET course homework", sub: "A full hour on whatever's still open from Sunday/Wednesday's class. Understand each step — it's direct exam practice." },
+      { id: "petsite", time: "15:30", cat: "pet", title: "PET practice — course website", sub: "Timed drill sets on the course's site (Hebrew first). Their material mirrors the real exam." },
+      { id: "portfolio", time: "16:30", cat: "cs", title: "Portfolio project — build & ship", sub: PORTFOLIO_SUB, link: "#learn/projects" }
+    ];
+  }
+  return [
+    S.daysBetween(S.PROJECT_START, dateKey) >= 0
+      ? { id: "capstone", time: "14:30", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
+      : { id: "portfolio", time: "14:30", cat: "cs", title: "Portfolio project — build & ship", sub: `Exam's behind you — a long session on the ladder. ${PORTFOLIO_SUB}`, link: "#learn/projects" }
+  ];
+}
+
 function studyMathBlock(time) {
   if (mathDone())
     return { id: "math", time, cat: "math", title: "Math keep-sharp (10 min) + CS project", sub: "Assignment done ✓ — quick PET math, then straight into building.", link: L.cs };
@@ -84,12 +107,8 @@ function deepWorkDay(dateKey, dow) {
     { id: "lunch", time: "12:00", cat: "food", title: "Lunch — ~40g protein", sub: "Tuna pasta / chicken + rice.", link: L.food },
     { id: "cyber", time: "13:00", cat: "cyber", title: `Cyber — ${t.icon} ${t.name}`, sub: "In LockIn Lab (desktop): read the lesson, build it, get your code checked. 🔒 Focus is Lab-gated.", link: L.cyber },
     { id: "leet", time: "13:45", cat: "leet", title: "LeetCode — daily", sub: "Solve today's problem in the Lab (a Hard lands ~weekly). Finishing it unlocks your phone.", link: L.cyber },
-    { id: "pethw", time: "14:30", cat: "pet", title: "PET course homework", sub: "Whatever's still open from Sunday/Wednesday's class — it's direct exam practice, do it while it's fresh." },
-    S.daysBetween(S.PROJECT_START, dateKey) >= 0
-      ? { id: "capstone", time: "15:15", cat: "cs", title: "🚀 Capstone project — the big build", sub: "Post-exam finale: your capstone in Learn → Portfolio. PET's done — pour the freed time into shipping this.", link: "#learn/projects" }
-      : { id: "petsite", time: "15:15", cat: "pet", title: "PET practice — course website", sub: "Timed drill sets on the course's site (Hebrew first). Their material mirrors the real exam." },
-    { id: "portfolio", time: "16:15", cat: "cs", title: "Portfolio project — build & ship", sub: "One stage of your résumé ladder (Learn → Portfolio). Use the 🏗 Build guide when you're actively writing.", link: "#learn/projects" },
-    { id: "free", time: "17:00", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
+    ...petAfternoon(dateKey),
+    { id: "free", time: "17:15", cat: "free", free: true, title: "FREE TIME — protected", sub: "Friends, games, whatever. You earned it — nothing schedules over this." },
     { id: "snack", time: "19:00", cat: "food", title: "Snack — pre-gym fuel", sub: "~25g protein about an hour before you lift.", link: L.food },
     travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("20:00", dow),
@@ -110,9 +129,9 @@ function courseDay(dateKey, dow) {
     travelBlock("homecourse", "14:40", TRAVEL.course, "Head home", "drive", "course"),
     { id: "leet", time: "15:30", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
     { id: "light", time: "16:15", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
-    { id: "homework", time: "17:15", cat: "pet", title: "PET homework — from today's class", sub: "Do it while it's fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
-    { id: "petsite", time: "18:00", cat: "pet", title: "PET practice — course website", sub: "Lock in today's class with a drill set on the course's site." },
-    { id: "dinner", time: "18:40", cat: "food", title: "Dinner — ~45g protein", sub: "Fuel for tonight's session — eat well before you lift.", link: L.food },
+    { id: "homework", time: "17:00", cat: "pet", title: "PET homework — from today's class", sub: "The big one: 75 minutes while it's still fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
+    { id: "petsite", time: "18:15", cat: "pet", title: "PET practice — course website", sub: "Lock in today's class with a drill set on the course's site." },
+    { id: "dinner", time: "18:55", cat: "food", title: "Dinner — ~45g protein", sub: "Fuel for tonight's session — eat well before you lift.", link: L.food },
     travelBlock("togym", "19:40", TRAVEL.gym, "Head to the gym", "drive", "gym"),
     gymBlock("20:00", dow),
     travelBlock("homegym", "21:15", TRAVEL.gym, "Head home", "drive", "gym"),
@@ -126,6 +145,9 @@ function fridayDay(dateKey, dow) {
   const wk = S.weekOf(dateKey);
   return [
     { id: "wake", time: "08:30", cat: "sleep", title: "Relaxed wake + breakfast", sub: "End-of-week day — but keep the wake time honest.", link: L.sleep, fixed: true },
+    ...(petLive(dateKey) ? [
+      { id: "pethw", time: "09:30", cat: "pet", title: "PET catch-up — homework + weak spots", sub: "Close out anything left from the week's two classes, then drill the section that hurt most. Hebrew wins the exam." }
+    ] : []),
     { id: "review", time: "10:30", cat: "review", title: `📋 Weekly Review — Week ${wk}`, sub: `Cumulative test: everything you've learned through week ${wk}. Beat last week's score.`, link: "#review" },
     { id: "labreview", time: "11:30", cat: "leet", title: "Lab: re-solve a past problem", sub: "Pick an earlier LeetCode/DSA exercise and redo it from scratch — proof it stuck.", link: L.cyber },
     travelBlock("togym", "12:15", TRAVEL.gym, "Head to the gym", "drive", "gym"),

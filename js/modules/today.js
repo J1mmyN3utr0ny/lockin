@@ -20,9 +20,12 @@ const CAT = {
   review: { emoji: "📋", color: "#22d3ee" }, travel: { emoji: "🚗", color: "#94a3b8" }
 };
 
-function toggle(dateKey, id, taskIds) {
+// Tick/untick one block of `dateKey`. Works for any day that has happened, so a
+// forgotten tick can be fixed later and still count. `celebrate` is off when the day
+// isn't today — back-filling Tuesday shouldn't throw confetti at you on Thursday.
+function toggle(dateKey, id, taskIds, celebrate = true) {
   let nowOn = false;
-  S.update((st) => {
+  S.update(() => {
     const rec = S.dayRec(dateKey);
     nowOn = !rec.blocks[id];
     rec.blocks[id] = nowOn;
@@ -32,9 +35,13 @@ function toggle(dateKey, id, taskIds) {
     buzz();
     const rec = S.dayRec(dateKey);
     if (taskIds.every((tid) => rec.blocks[tid])) {
-      confetti(36); buzz(30);
-      toast("🔥 Full day cleared. That's how the summer gets won.");
-      S.logEvent("fullclear", "cleared every block of the day");
+      if (celebrate) {
+        confetti(36); buzz(30);
+        toast("🔥 Full day cleared. That's how the summer gets won.");
+        S.logEvent("fullclear", "cleared every block of the day");
+      } else {
+        toast(`✓ ${S.prettyDate(dateKey)} logged as fully cleared.`);
+      }
     }
   }
   refresh();
@@ -107,36 +114,85 @@ function weekStrip(todayKey) {
   return html + `</div>`;
 }
 
-// Preview any day's plan in a modal, paging the whole summer. Days beyond the current
-// week show only times + titles — their descriptions stay blank until the week arrives.
+// Open any day's plan in a modal, paging the whole summer. Days that have already
+// happened (and today) are EDITABLE — tick blocks you forgot to mark at the time, and
+// the day's record, XP and streak update exactly as if you'd ticked them live. A day
+// that hasn't happened yet stays read-only; ticking the future isn't progress. Days
+// beyond the current week show only times + titles until their week arrives.
+const _retroLogged = new Set(); // one manager event per back-filled day, not per tap
+
 function previewDay(dateKey) {
   const d = buildDay(dateKey);
   const todayKey = S.todayKey();
   const revealed = S.daysBetween(sundayOf(todayKey), sundayOf(dateKey)) <= 0;
+  const started = S.daysBetween(S.PROGRAM_START, dateKey) >= 0;
+  const happened = S.daysBetween(dateKey, todayKey) >= 0;
+  const isToday = dateKey === todayKey;
+  const off = S.getState().offDays.spent.includes(dateKey);
+  const editable = started && happened && !off;
   const canPrev = S.daysBetween(S.PROGRAM_START, dateKey) > 0;
   const canNext = S.daysBetween(dateKey, S.SUMMER_END) > 0;
-  const rows = d.blocks.map((b) => {
-    const c = CAT[b.cat] || CAT.free;
-    return `
-      <div class="row" style="gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px solid var(--line)">
-        <div style="width:4px; align-self:stretch; border-radius:3px; background:${c.color}; flex:none"></div>
-        <div class="time" style="min-width:46px; color:var(--accent-2); font-weight:800; font-size:13px">${esc(b.time)}</div>
-        <div style="flex:1; min-width:0">
-          <div style="font-weight:700; font-size:13.5px">${esc(b.title)} ${b.fixed ? `<span class="dim" style="font-weight:400">🔒</span>` : ""}</div>
-          ${revealed && b.sub ? `<div class="small muted">${esc(b.sub)}</div>` : ""}
-        </div>
-      </div>`;
-  }).join("");
+  const taskIds = taskBlockIds(dateKey);
+
+  function rowsHTML() {
+    const rec = S.getState().days[dateKey] || { blocks: {} };
+    return d.blocks.map((b) => {
+      const c = CAT[b.cat] || CAT.free;
+      const done = !!(rec.blocks || {})[b.id];
+      return `
+        <div class="pvrow ${done ? "done" : ""}">
+          <div class="pvbar" style="background:${c.color}"></div>
+          <div class="pvtime">${esc(b.time)}</div>
+          <div class="pvbody">
+            <div class="pvt">${esc(b.title)} ${b.fixed ? `<span class="dim" style="font-weight:400">🔒</span>` : ""}</div>
+            ${revealed && b.sub ? `<div class="small muted">${esc(b.sub)}</div>` : ""}
+          </div>
+          ${b.free
+            ? `<span class="emoji" style="flex:none">${c.emoji}</span>`
+            : editable
+              ? `<div class="chk" data-pvchk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`
+              : `<span class="pvghost">${done ? "✓" : ""}</span>`}
+        </div>`;
+    }).join("");
+  }
+  function headHTML() {
+    const rec = S.getState().days[dateKey] || { blocks: {} };
+    const n = taskIds.filter((id) => (rec.blocks || {})[id]).length;
+    return `${n}/${taskIds.length}`;
+  }
+
   const m = openModal(`
     <div class="row between" style="margin-bottom:8px">
       <button class="btn sm ghost" id="pv-prev" ${canPrev ? "" : "disabled"}>‹</button>
       <div class="center"><b>${esc(S.prettyDate(dateKey))}</b>
-        <div style="margin-top:2px"><span class="tag">${esc(d.label)}</span></div></div>
+        <div style="margin-top:2px"><span class="tag">${esc(d.label)}</span>
+          ${taskIds.length ? `<span class="tag" id="pv-count">${headHTML()}</span>` : ""}</div></div>
       <button class="btn sm ghost" id="pv-next" ${canNext ? "" : "disabled"}>›</button>
     </div>
-    ${revealed ? "" : `<p class="small dim" style="margin:0 0 6px">🔭 Beyond this week — the details fill in when its week arrives.</p>`}
-    <div style="max-height:58vh; overflow:auto">${rows}</div>
+    ${off ? `<p class="small dim" style="margin:0 0 6px">🌙 You spent an off-day here — nothing to tick.</p>`
+      : editable ? `<p class="small dim" style="margin:0 0 6px">${isToday ? "✅ Tick anything you've done today." : "✅ Forgot to tick something? Fix it here — XP and your streak update too."}</p>`
+      : !started ? `<p class="small dim" style="margin:0 0 6px">Before the program started.</p>`
+      : `<p class="small dim" style="margin:0 0 6px">🔭 Hasn't happened yet${revealed ? "" : " — the details fill in when its week arrives"}.</p>`}
+    <div style="max-height:58vh; overflow:auto" id="pv-rows">${rowsHTML()}</div>
     <button class="btn block" data-close style="margin-top:12px">Close</button>`);
+
+  function paint() {
+    m.querySelector("#pv-rows").innerHTML = rowsHTML();
+    const cnt = m.querySelector("#pv-count");
+    if (cnt) cnt.textContent = headHTML();
+    bind();
+  }
+  function bind() {
+    m.querySelectorAll("[data-pvchk]").forEach((el) => el.addEventListener("click", () => {
+      toggle(dateKey, el.dataset.pvchk, taskIds, isToday);
+      if (!isToday && !_retroLogged.has(dateKey)) {
+        _retroLogged.add(dateKey);
+        S.logEvent("retro", `back-filled blocks for ${S.prettyDate(dateKey)}`);
+      }
+      paint();
+    }));
+  }
+  bind();
   if (canPrev) m.querySelector("#pv-prev").addEventListener("click", () => previewDay(S.addDays(dateKey, -1)));
   if (canNext) m.querySelector("#pv-next").addEventListener("click", () => previewDay(S.addDays(dateKey, 1)));
 }
