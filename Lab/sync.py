@@ -1,6 +1,7 @@
 # sync.py — a tiny local web server so the phone app can read the Lab's progress over Wi-Fi.
 # The phone polls GET /status to show synced records and to auto-unlock its Focus Lock once you've
 # finished your Lab work. CORS is open (localhost tool on your own LAN) so the PWA can fetch it.
+import datetime
 import json
 import os
 import queue
@@ -26,6 +27,28 @@ def _broadcast(event, data):
             q.put_nowait((event, data))
         except Exception:
             pass
+
+
+def _wake_for(d):
+    """Mirrors the web app's schedule: Saturday rests (no alarm), Friday wakes 08:30,
+    course days (Sun & Wed until the Sep-3 exam) 07:00, every other day 07:30."""
+    wd = d.weekday()  # Mon=0 .. Sun=6
+    if wd == 5:
+        return None
+    if wd == 4:
+        return "08:30"
+    if wd in (6, 2) and d <= datetime.date(2026, 9, 3):
+        return "07:00"
+    return "07:30"
+
+
+def wake_plan():
+    """Today + tomorrow's wake times — consumed by the Alarma app to build the morning burst."""
+    today = datetime.date.today()
+    return {"days": [
+        {"date": d.isoformat(), "wake": _wake_for(d)}
+        for d in (today, today + datetime.timedelta(days=1))
+    ]}
 
 
 def local_ip():
@@ -78,6 +101,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, _Handler.app_state or {"updatedAt": 0})
         elif path == "/gymmy":
             self._send(200, _Handler.gymmy_state or {"sessions": []})
+        elif path == "/waketime":
+            self._send(200, wake_plan())
         elif path == "/events":
             self._sse()
         else:

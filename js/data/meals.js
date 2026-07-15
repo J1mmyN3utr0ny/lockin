@@ -2,22 +2,25 @@
 // Built around foods the user already eats (tuna!) and zero-cooking, high-protein options.
 
 // Daily structure: 3 meals + 2 snacks. Ticking all 5 is the win condition, regardless of hunger.
+// `frac` is each slot's share of the DAILY protein target (fractions sum to 1.0), so the
+// five slot amounts always add up to the headline number instead of overshooting it.
+// `time` is only the fallback — the Diet tab reads the real times from today's schedule.
 export const mealSlots = [
-  { id: "m1", label: "Breakfast", time: "08:00", target: "~35g protein", ideas: [
+  { id: "m1", label: "Breakfast", time: "08:00", frac: 0.22, ideas: [
     "3-4 eggs (scrambled/omelette) + 2 toast", "Greek yogurt (500g) + honey + oats",
     "Cottage cheese (250g) + bread + tomato", "Protein shake + banana + peanut butter"
   ] },
-  { id: "s1", label: "Snack", time: "11:00", target: "~20g protein", ideas: [
+  { id: "s1", label: "Snack", time: "11:00", frac: 0.10, ideas: [
     "1 tuna can + crackers", "Handful of nuts + a glass of milk", "Chocolate milk (500ml)", "Protein bar"
   ] },
-  { id: "m2", label: "Lunch", time: "13:00", target: "~40g protein", ideas: [
+  { id: "m2", label: "Lunch", time: "13:00", frac: 0.25, ideas: [
     "Tuna pasta (2 cans + pasta + olive oil)", "Chicken breast + rice + veg",
     "Tuna sandwich x2 (whole meal) + egg", "Rice bowl + 2 eggs + tuna"
   ] },
-  { id: "s2", label: "Snack", time: "19:00 (pre-gym fuel)", target: "~25g protein", ideas: [
+  { id: "s2", label: "Snack (pre-gym)", time: "19:00", frac: 0.13, ideas: [
     "Protein shake + oats", "2 tuna cans on bread", "Greek yogurt + fruit", "Cottage cheese + granola"
   ] },
-  { id: "m3", label: "Dinner", time: "~21:30 (post-gym, biggest meal)", target: "~45g protein", ideas: [
+  { id: "m3", label: "Dinner (post-gym)", time: "21:40", frac: 0.30, ideas: [
     "Chicken/beef + rice/potato + salad", "Big tuna+egg rice bowl", "Family dinner — eat well and go back for seconds",
     "Pasta + tuna + cheese + side of yogurt"
   ] }

@@ -32,7 +32,7 @@ function defaults() {
     createdAt: new Date().toISOString(),
     updatedAt: 0, // ms of the last edit — drives last-write-wins sync between phone and PC
     startKey: PROGRAM_START, // program anchored to Jul 12, not first-run day
-    settings: { debugDate: null, mode: "auto", onboarded: false, geminiKey: "", labUrl: "" },
+    settings: { debugDate: null, mode: "auto", onboarded: false, geminiKey: "", geminiKey2: "", labUrl: "" },
     lab: { status: null, syncedAt: null }, // last synced snapshot from the desktop Lab
     profile: {
       name: "",
@@ -49,11 +49,13 @@ function defaults() {
     meals: {}, // meals[key] = { slotId:true }
     days: {}, // days[key] = { blocks:{id:true}, offDay:false, note:"" }
     dayOrders: {}, // dayOrders[key] = [movable unit ids in the user's chosen day order]
+    dayTweaks: {}, // dayTweaks[key] = { shift: mins, skip: [unit ids] } — AI/day adjustments
     customLessons: [], // AI-generated Learn-hub lessons (see modules/lesson_gen.js)
     events: [], // capped log of notable app events — the AI manager's raw material
     notifications: [], // manager notes for the 🔔 panel: {id, t, icon, text, read}
-    manager: { lastRun: 0 }, // throttle for the AI manager (ms timestamp)
+    autogen: { lastRun: 0 }, // throttle for the background lesson auto-builder
     workoutLogs: {}, // [key] = { dayId, ex:{ exId:[{w,r}] } }
+    workoutTweaks: {}, // [key] = { dayId, note, exercises:[{id,sets,reps}] } — AI-adjusted session
     cs: { milestones: {} }, // id -> { status, hintLevel, reflection }
     projects: {}, // resume-project id -> { stages:{i:{done,hintLevel}}, ship:{i:true}, bullets, reflection, rebuilt }
     math: { checklist: {} }, // id -> true
@@ -128,10 +130,12 @@ export function applyRemote(remote) {
   // Connection config is per-device; everything else (progress, xp, onboarded, …) syncs.
   const keepLabUrl = state.settings.labUrl;
   const keepKey = state.settings.geminiKey;
+  const keepKey2 = state.settings.geminiKey2;
   const keepLab = state.lab;
   state = deepMerge(defaults(), remote);
   state.settings.labUrl = keepLabUrl;
   state.settings.geminiKey = keepKey;
+  state.settings.geminiKey2 = keepKey2;
   state.lab = keepLab;
   state.updatedAt = remote.updatedAt || Date.now();
   save();

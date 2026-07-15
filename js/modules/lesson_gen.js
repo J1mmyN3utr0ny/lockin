@@ -14,7 +14,7 @@
 import * as S from "../state.js";
 import { esc, openModal, closeModal, toast, confetti, buzz } from "../ui.js";
 import { gemini, hasKey, extractJSON } from "../ai.js";
-import { lessonTracks } from "../data/lessons_content.js";
+import { lessonTracks, lessons } from "../data/lessons_content.js";
 import { topicSuggestions } from "../data/lesson_topics.js";
 
 const PAUSE_MS = 6500;   // ≥6.5s between calls ≈ max ~9 req/min — inside the free tier's 10 RPM
@@ -27,7 +27,20 @@ const SYSTEM =
   "advanced-beginner level (he can read code). You MUST reply with ONLY valid JSON matching the requested " +
   "schema — no markdown fences, no commentary, no trailing commas, no extra keys.";
 
-let running = false; // one generation at a time
+let running = false; // one generation at a time — the user is rate-limited to a single build
+
+// What the pipeline is doing right now — the Lessons hub shows this live, and it keeps
+// updating even after the generator modal is closed (generation never stops with it).
+let progress = null; // { trackId, trackName, topic, label }
+export function genStatus() { return progress; }
+function setProgress(p) {
+  progress = p;
+  window.dispatchEvent(new CustomEvent("lockin:refresh")); // hub card repaints in place
+}
+
+// Completed stages survive a failed step: a retry of the same track+topic resumes from
+// where it broke instead of regenerating (and re-paying for) everything before it.
+const drafts = {}; // `${trackId}::${topic}` -> { outline, sections: [...], quiz }
 
 // ---- strict parsing & validation ----------------------------------------------
 
@@ -92,38 +105,42 @@ function vVerify(o, sectionCount) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// One validated step: ask → parse → validate → (on failure: ONE retry that echoes
-// the exact problem back) → throw if still bad. 429s get a single long back-off.
+// One validated step: ask → parse → validate → on failure retry (echoing the exact
+// problem back) up to twice. Rate limits rotate to the backup key inside gemini();
+// if a step still fails, the error surfaces — but everything already generated stays
+// in the draft, so retrying the same topic resumes instead of starting over.
 async function step(prompt, validate, ctl) {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let problem = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
     if (ctl.cancelled) throw new Error("cancelled");
     let raw;
     try {
       raw = await gemini({ tier: "smart", system: SYSTEM, messages: [{ role: "user", text: prompt }], temperature: 0.35 });
     } catch (e) {
-      if (/rate limit/i.test(e.message) && attempt === 0) { ctl.note("rate-limited — backing off 30s…"); await sleep(30000); continue; }
+      if (/rate.?limit/i.test(e.message) && attempt < 2) { ctl.note("rate-limited — backing off 30s…"); await sleep(30000); continue; }
       throw e;
     }
-    let parsed, problem;
-    try { parsed = extractJSON(raw); problem = validate(parsed); }
+    let parsed;
+    try { parsed = extractJSON(raw); problem = validate(parsed) || ""; }
     catch (e) { problem = e.message; }
     if (!problem) return parsed;
-    if (attempt === 0) {
-      ctl.note("reply was invalid — retrying once…");
+    if (attempt < 2) {
+      ctl.note(`reply was invalid — retrying (${attempt + 1}/2)…`);
       await sleep(PAUSE_MS);
       prompt += `\n\nYour previous reply was rejected: ${problem}. Reply again with ONLY the corrected valid JSON.`;
-    } else {
-      throw new Error(`The AI couldn't produce valid content (${problem}). Nothing was saved — try again or pick another topic.`);
     }
   }
+  throw new Error(`The AI couldn't produce valid content (${problem}). Your progress is kept — retry the same topic to resume from this step.`);
 }
 
 async function generateLesson(trackId, topic, ctl) {
   const track = lessonTracks.find((t) => t.id === trackId);
+  const draftKey = `${trackId}::${topic.toLowerCase()}`;
+  const draft = drafts[draftKey] = drafts[draftKey] || { sections: [] };
 
-  // 1 · outline
+  // 1 · outline (resumed from the draft if a previous run already produced it)
   ctl.stage("outline");
-  const outline = await step(
+  const outline = draft.outline || await step(
     `Create the outline for ONE self-contained lesson.\n` +
     `Track: ${track.name}\nTopic: "${topic}"\n` +
     `Reply with ONLY this JSON shape:\n` +
@@ -133,12 +150,13 @@ async function generateLesson(trackId, topic, ctl) {
     `Rules: 3 to 5 sections; they must build logically from fundamentals to application; no fluffy ` +
     `"introduction" section — every section teaches something concrete about the topic.`,
     vOutline, ctl);
+  draft.outline = outline;
 
   if (ctl.setSections) ctl.setSections(outline.sections.length);
 
-  // 2 · one prompt per section, paced
-  const sections = [];
-  for (let i = 0; i < outline.sections.length; i++) {
+  // 2 · one prompt per section, paced; already-written sections come from the draft
+  const sections = draft.sections;
+  for (let i = sections.length; i < outline.sections.length; i++) {
     ctl.stage(`sec${i}`);
     await sleep(PAUSE_MS);
     const prev = outline.sections.slice(0, i).map((s) => s.h).join(" · ") || "none (this is the first)";
@@ -158,10 +176,10 @@ async function generateLesson(trackId, topic, ctl) {
 
   const fullText = sections.map((s) => `## ${s.h}\n${s.body}`).join("\n\n");
 
-  // 3 · quiz
+  // 3 · quiz (draft-resumable like the rest)
   ctl.stage("quiz");
   await sleep(PAUSE_MS);
-  const quizObj = await step(
+  const quizObj = draft.quiz ? { quiz: draft.quiz } : await step(
     `Write the self-check quiz for the lesson below.\n` +
     `Reply with ONLY this JSON: {"quiz":[{"q": string, "options":[string,string,string,string], ` +
     `"answer": integer 0-3, "why": string (one sentence explaining why the correct option is right)}]}\n` +
@@ -170,6 +188,7 @@ async function generateLesson(trackId, topic, ctl) {
     `LESSON TEXT:\n<<<\n${fullText}\n>>>`,
     vQuiz, ctl);
   let quiz = quizObj.quiz;
+  draft.quiz = quiz;
 
   // 4 · independent fact-check pass over everything
   ctl.stage("check");
@@ -188,6 +207,7 @@ async function generateLesson(trackId, topic, ctl) {
   for (const f of review.sectionFixes) sections[f.index] = { ...sections[f.index], body: f.body.trim() };
   for (const f of review.quizFixes) quiz[f.index] = { q: f.q, options: f.options, answer: f.answer, why: f.why };
 
+  delete drafts[draftKey]; // the lesson made it — the safety net isn't needed anymore
   return {
     id: `ai-${Date.now().toString(36)}`,
     ai: true,
@@ -199,6 +219,56 @@ async function generateLesson(trackId, topic, ctl) {
     sections,
     quiz
   };
+}
+
+function stageLabel(id) {
+  if (id === "outline") return "outlining the lesson";
+  if (id === "quiz") return "writing the quiz";
+  if (id === "check") return "independent fact-check";
+  const m = /^sec(\d+)$/.exec(id);
+  return m ? `writing section ${Number(m[1]) + 1}` : id;
+}
+
+// ---- background auto-builder ------------------------------------------------------
+// Called shortly after app launch: quietly builds ONE lesson for whichever track has
+// the fewest, so empty subjects fill themselves over time. Throttled hard (6h), uses
+// the exact same staged+validated pipeline, and never runs while a manual build does.
+const AUTOGEN_COOLDOWN = 6 * 3600 * 1000;
+const AUTOGEN_TARGET = 6; // once every track has this many lessons, stop growing alone
+
+export async function autoBuildTick() {
+  if (running || !hasKey() || !navigator.onLine) return;
+  const st = S.getState();
+  if (Date.now() - ((st.autogen || {}).lastRun || 0) < AUTOGEN_COOLDOWN) return;
+  const custom = st.customLessons || [];
+  const counts = lessonTracks
+    .map((t) => ({ t, n: lessons.filter((l) => l.track === t.id).length + custom.filter((l) => l.track === t.id).length }))
+    .sort((a, b) => a.n - b.n);
+  const target = counts[0];
+  if (!target || target.n >= AUTOGEN_TARGET) return;
+  const used = new Set(custom.map((l) => l.title.toLowerCase()));
+  const topic = (topicSuggestions[target.t.id] || []).find((x) => !used.has(x.toLowerCase()));
+  if (!topic) return;
+
+  S.update((s) => { s.autogen = { lastRun: Date.now() }; }); // claim before the slow part
+  running = true;
+  const ctl = {
+    cancelled: false,
+    stage(id) { setProgress({ trackId: target.t.id, trackName: target.t.name, topic, label: stageLabel(id) + " (auto)" }); },
+    note() {},
+    setSections() {}
+  };
+  try {
+    const lesson = await generateLesson(target.t.id, topic, ctl);
+    S.update((s) => {
+      if (!Array.isArray(s.customLessons)) s.customLessons = [];
+      s.customLessons.push(lesson);
+    });
+    S.logEvent("lesson", `auto-built "${lesson.title}" (${target.t.name})`);
+    toast(`📘 Built in the background: "${lesson.title}" (${target.t.name})`);
+  } catch (e) { /* quiet — the draft is kept; the next tick resumes it */ }
+  running = false;
+  setProgress(null);
 }
 
 // ---- UI -------------------------------------------------------------------------
@@ -261,7 +331,11 @@ export function openGenerator(trackId, onDone) {
     const ctl = {
       cancelled: false,
       current: null,
-      stage(id) { this.current = id; paint(); },
+      stage(id) {
+        this.current = id;
+        paint();
+        setProgress({ trackId: track.id, trackName: track.name, topic, label: stageLabel(id) });
+      },
       note(msg) { paintNote(msg); },
       setSections(n) {
         const secs = Array.from({ length: n }, (_, i) => ({ id: `sec${i}`, label: `Writing section ${i + 1} of ${n}` }));
@@ -292,12 +366,14 @@ export function openGenerator(trackId, onDone) {
       });
       S.logEvent("lesson", `generated the AI lesson "${lesson.title}" (${track.name})`);
       running = false;
+      setProgress(null);
       confetti(24); buzz(20);
       toast(`📘 "${lesson.title}" is ready in ${track.name}`);
       if (m.isConnected) closeModal(); // still on the generator? jump straight into the lesson
       if (onDone) onDone(lesson);
     } catch (e) {
       running = false;
+      setProgress(null);
       const msg = e.message === "NO_KEY" ? "No API key set." : e.message;
       if (runEl.isConnected) {
         runEl.innerHTML += `<div class="small" style="color:var(--bad); margin-top:6px">✗ ${esc(msg)}</div>`;

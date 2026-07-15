@@ -106,6 +106,30 @@ export const decks = {
       { id: "cmd-bat", term: ".bat scripts", explain: "A text file of CMD commands. @echo off hides echo, %1 %2 are arguments, pause waits for a key. The publish.bat in this repo is one!" },
       { id: "cmd-help", term: "help /?", explain: "Every command explains itself: netstat /? or help copy. The CMD equivalent of man." }
     ]
+  },
+  ports: {
+    id: "ports", title: "Protocols & Ports", gama: "GAMA requirement: name → purpose → port, cold",
+    prompt: "Name the protocol's purpose AND its port number.",
+    cards: [
+      { id: "port-http", term: "HTTP", explain: "Web pages, unencrypted — TCP port 80. The request/response protocol of the web." },
+      { id: "port-https", term: "HTTPS", explain: "HTTP wrapped in TLS encryption — TCP port 443. What every serious site uses." },
+      { id: "port-dns", term: "DNS", explain: "Resolves names to IP addresses — port 53 (UDP for queries, TCP for zone transfers/large replies)." },
+      { id: "port-ssh", term: "SSH", explain: "Encrypted remote shell + file transfer (scp/sftp) — TCP port 22." },
+      { id: "port-telnet", term: "Telnet", explain: "Legacy PLAINTEXT remote terminal — TCP port 23. Insecure; the reason SSH exists." },
+      { id: "port-ftp", term: "FTP", explain: "File transfer — TCP port 21 for control, port 20 for data (active mode). Plaintext credentials." },
+      { id: "port-smtp", term: "SMTP", explain: "SENDING email between servers — TCP port 25 (587 for client submission with auth)." },
+      { id: "port-pop3", term: "POP3", explain: "Email retrieval that downloads-and-deletes — TCP port 110. The simple, single-device option." },
+      { id: "port-imap", term: "IMAP", explain: "Email retrieval that keeps mail on the server, synced across devices — TCP port 143." },
+      { id: "port-dhcp", term: "DHCP", explain: "Auto-assigns IP/mask/gateway/DNS — UDP ports 67 (server) and 68 (client). DORA handshake." },
+      { id: "port-rdp", term: "RDP", explain: "Windows Remote Desktop — TCP port 3389. Full graphical remote control; a classic attack surface." },
+      { id: "port-ntp", term: "NTP", explain: "Network Time Protocol — clock sync, UDP port 123. Wrong clocks break TLS and log forensics." },
+      { id: "port-snmp", term: "SNMP", explain: "Monitoring/managing network devices — UDP port 161 (162 for traps). 'Community strings' are its weak passwords." },
+      { id: "port-ldap", term: "LDAP", explain: "Directory lookups (users/groups — Active Directory's language) — TCP/UDP port 389 (636 over TLS)." },
+      { id: "port-smb", term: "SMB", explain: "Windows file/printer sharing — TCP port 445. EternalBlue's playground; the classic lateral-movement port." },
+      { id: "port-mysql", term: "MySQL", explain: "MySQL database server — TCP port 3306 (Postgres uses 5432, MSSQL 1433)." },
+      { id: "port-tftp", term: "TFTP", explain: "Trivial FTP: no auth, UDP port 69 — used by PXE boot and router firmware, abused by attackers." },
+      { id: "port-kerb", term: "Kerberos", explain: "Windows-domain ticket authentication — port 88. The heart of Active Directory logons." }
+    ]
   }
 };
 

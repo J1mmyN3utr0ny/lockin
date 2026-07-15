@@ -123,10 +123,10 @@ function courseDay(dateKey, dow) {
   const t = cyberTrackFor(dateKey);
   return [
     { id: "wake", time: "07:00", cat: "sleep", title: "Wake · water · quick breakfast", sub: "Course day — up a little earlier to make the 9:00 start.", link: L.sleep, fixed: true },
-    { id: "commute", time: "08:15", cat: "travel", title: "Head to PET course", sub: `About ${TRAVEL.course} min — bring water + a snack.`, fixed: true, group: "course" },
-    { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Sundays & Wednesdays. This is your main PET engine.", link: L.pet, fixed: true, group: "course" },
-    { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class.", link: L.food, fixed: true, group: "course" },
-    travelBlock("homecourse", "14:40", TRAVEL.course, "Head home", "drive", "course"),
+    { id: "commute", time: "08:15", cat: "travel", title: "Head to PET course", sub: `About ${TRAVEL.course} min — bring water + a snack.`, fixed: true, hard: true, group: "course" },
+    { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Sundays & Wednesdays. This is your main PET engine.", link: L.pet, fixed: true, hard: true, group: "course" },
+    { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class.", link: L.food, fixed: true, hard: true, group: "course" },
+    { ...travelBlock("homecourse", "14:40", TRAVEL.course, "Head home", "drive", "course"), hard: true },
     { id: "leet", time: "15:30", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
     { id: "light", time: "16:15", cat: "cyber", title: `Light block — ${t.icon} ${t.name} or CS`, sub: "Lower intensity after the course. A lesson in the Lab or one CS step.", link: L.cyber },
     { id: "homework", time: "17:00", cat: "pet", title: "PET homework — from today's class", sub: "The big one: 75 minutes while it's still fresh. Understand each step — it's direct exam practice, not busywork.", link: L.pet },
@@ -154,7 +154,7 @@ function fridayDay(dateKey, dow) {
     gymBlock("12:40", dow),
     travelBlock("homegym", "13:50", TRAVEL.gym, "Head home", "drive", "gym"),
     { id: "free1", time: "14:15", cat: "free", free: true, title: "FREE — friends / rest", sub: "You reviewed the week. Enjoy it." },
-    { id: "dinner", time: "19:00", cat: "food", title: "Family dinner — EAT BIG", sub: "Your best-eating day. Seconds encouraged — this fuels growth.", link: L.food, fixed: true },
+    { id: "dinner", time: "19:00", cat: "food", title: "Family dinner — EAT BIG", sub: "Your best-eating day. Seconds encouraged — this fuels growth.", link: L.food, fixed: true, hard: true },
     { id: "free2", time: "20:30", cat: "free", free: true, title: "FREE evening", sub: "" },
     { id: "sleep", time: "00:00", cat: "sleep", title: "Sleep (a bit later is OK)", sub: "Don't drift too far — Sunday is a course day.", link: L.sleep, fixed: true }
   ];
@@ -169,16 +169,18 @@ function shabbatDay(dateKey) {
   ];
 }
 
-export function buildDay(dateKey) {
+function canonicalBlocks(dateKey) {
   const type = S.dayType(dateKey);
   const dow = S.dow(dateKey);
-  const taper = taperTargets(dateKey);
-  let blocks, label;
-  if (type === "course") { blocks = courseDay(dateKey, dow); label = "Course day"; }
-  else if (type === "friday") { blocks = fridayDay(dateKey, dow); label = "Friday — Weekly Review"; }
-  else if (type === "shabbat") { blocks = shabbatDay(dateKey); label = "Shabbat — rest"; }
-  else { blocks = deepWorkDay(dateKey, dow); label = "Deep-work day"; }
-  return { type, label, taper, blocks: applyDayOrder(dateKey, blocks) };
+  if (type === "course") return { type, label: "Course day", blocks: courseDay(dateKey, dow) };
+  if (type === "friday") return { type, label: "Friday — Weekly Review", blocks: fridayDay(dateKey, dow) };
+  if (type === "shabbat") return { type, label: "Shabbat — rest", blocks: shabbatDay(dateKey) };
+  return { type, label: "Deep-work day", blocks: deepWorkDay(dateKey, dow) };
+}
+
+export function buildDay(dateKey) {
+  const c = canonicalBlocks(dateKey);
+  return { type: c.type, label: c.label, taper: taperTargets(dateKey), blocks: applyDayOrder(dateKey, c.blocks) };
 }
 
 // ---- movable units & per-day reordering -------------------------------------
@@ -190,13 +192,18 @@ export function buildDay(dateKey) {
 
 function minOf(t) { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
 
-// Group consecutive blocks that share a `group` tag into single units.
+// Group consecutive blocks that share a `group` tag into single units. `fixed` units
+// anchor the reorder; `hard` units (the PET course, family dinner) additionally refuse
+// whole-day shifts — the world outside the app doesn't move because you slept in.
 export function unitize(blocks) {
   const units = [];
   for (const b of blocks) {
     const last = units[units.length - 1];
-    if (b.group && last && last.group === b.group) { last.blocks.push(b); last.fixed = last.fixed || !!b.fixed; }
-    else units.push({ id: b.id, group: b.group || null, fixed: !!b.fixed, blocks: [b] });
+    if (b.group && last && last.group === b.group) {
+      last.blocks.push(b);
+      last.fixed = last.fixed || !!b.fixed;
+      last.hard = last.hard || !!b.hard;
+    } else units.push({ id: b.id, group: b.group || null, fixed: !!b.fixed, hard: !!b.hard, blocks: [b] });
   }
   return units;
 }
@@ -219,14 +226,21 @@ function blockDurations(blocks) {
   return durs;
 }
 
-// Apply the user's saved order for this date (if any): reorder movable units
-// within their segment, then re-time everything off the durations.
+// Apply the user's (or the AI's) saved plan for this date: drop skipped units,
+// reorder movable units within their segment, shift the day's own anchors (wake,
+// wind-down, sleep — never `hard` ones), then re-time everything off the durations.
 function applyDayOrder(dateKey, blocks) {
-  const saved = (S.getState().dayOrders || {})[dateKey];
-  if (!saved || !saved.length) return blocks;
+  const st = S.getState();
+  const saved = (st.dayOrders || {})[dateKey] || [];
+  const tweaks = (st.dayTweaks || {})[dateKey] || {};
+  const shift = Math.round(Number(tweaks.shift) || 0);
+  const skip = new Set(Array.isArray(tweaks.skip) ? tweaks.skip : []);
+  if (!saved.length && !shift && !skip.size) return blocks;
   if (blocks.some((b) => minOf(b.time) === null)) return blocks; // untimed day (Shabbat) — nothing to move
-  const units = unitize(blocks);
-  const durs = blockDurations(blocks);
+
+  const durs = blockDurations(blocks); // durations from CANONICAL times, before any drop
+  let units = unitize(blocks);
+  if (skip.size) units = units.filter((u) => u.fixed || !skip.has(u.id));
 
   // Reorder each run of movable units (a "segment") by the saved id order;
   // ids the save doesn't know keep their canonical order (stable sort).
@@ -246,14 +260,16 @@ function applyDayOrder(dateKey, blocks) {
   }
   flush();
 
-  // Re-time: movable blocks stack from the cursor; fixed anchors resync it.
-  let cursor = minOf(units[0].blocks[0].time);
+  // Re-time: fixed anchors keep their canonical time (+shift unless hard); movable
+  // blocks stack from the cursor between them.
+  let cursor = minOf(units[0].blocks[0].time) + (units[0].hard ? 0 : shift);
   const out = [];
   for (const u of ordered) {
     if (u.fixed) {
-      for (const b of u.blocks) out.push(b);
+      const uShift = u.hard ? 0 : shift;
+      for (const b of u.blocks) out.push(uShift ? { ...b, time: toHHMM(minOf(b.time) + uShift) } : b);
       const lastB = u.blocks[u.blocks.length - 1];
-      cursor = minOf(lastB.time) + durs.get(lastB);
+      cursor = minOf(lastB.time) + uShift + durs.get(lastB);
     } else {
       for (const b of u.blocks) {
         out.push({ ...b, time: toHHMM(cursor) });
@@ -264,8 +280,16 @@ function applyDayOrder(dateKey, blocks) {
   return out;
 }
 
-export function hasCustomOrder(dateKey) { return !!((S.getState().dayOrders || {})[dateKey] || []).length; }
-export function resetDayOrder(dateKey) { S.update((st) => { if (st.dayOrders) delete st.dayOrders[dateKey]; }); }
+export function hasCustomOrder(dateKey) {
+  const st = S.getState();
+  return !!(((st.dayOrders || {})[dateKey] || []).length || (st.dayTweaks || {})[dateKey]);
+}
+export function resetDayOrder(dateKey) {
+  S.update((st) => {
+    if (st.dayOrders) delete st.dayOrders[dateKey];
+    if (st.dayTweaks) delete st.dayTweaks[dateKey];
+  });
+}
 
 function saveOrder(dateKey, ids) {
   S.update((st) => {
@@ -296,14 +320,42 @@ export function placeUnit(dateKey, unitId, insertAt) {
   return true;
 }
 
-// The AI day-planner writes a whole order at once. Only accepted when `ids` is exactly
-// the set of movable unit ids — anything else is rejected, nothing changes.
-export function setDayOrder(dateKey, ids) {
-  const movable = unitize(buildDay(dateKey).blocks).filter((u) => !u.fixed).map((u) => u.id);
-  if (!Array.isArray(ids) || ids.length !== movable.length) return false;
-  const want = new Set(movable);
-  if (!ids.every((id) => typeof id === "string" && want.has(id)) || new Set(ids).size !== ids.length) return false;
-  saveOrder(dateKey, ids);
+// The AI day-planner writes whole plans at once — for today AND following days (a late
+// hangout tonight can push tomorrow's start). Each day may reorder, SKIP movable units,
+// and SHIFT the day's own anchors (wake/wind-down/sleep; `hard` anchors never move).
+// Everything is validated against the canonical day — any deviation rejects the whole
+// plan and nothing changes.
+export function applyAiPlan(days) {
+  if (!Array.isArray(days) || !days.length || days.length > 4) return false;
+  const today = S.todayKey();
+  const writes = [];
+  for (const d of days) {
+    if (!d || typeof d.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return false;
+    const ahead = S.daysBetween(today, d.date);
+    if (ahead < 0 || ahead > 7) return false;
+    const shift = Math.round(Number(d.shift) || 0);
+    if (shift < -120 || shift > 180) return false;
+    const movable = unitize(canonicalBlocks(d.date).blocks).filter((u) => !u.fixed).map((u) => u.id);
+    const skip = Array.isArray(d.skip) ? d.skip : [];
+    if (new Set(skip).size !== skip.length || !skip.every((id) => movable.includes(id))) return false;
+    const remaining = movable.filter((id) => !skip.includes(id));
+    const order = Array.isArray(d.order) && d.order.length ? d.order : remaining;
+    if (order.length !== remaining.length || new Set(order).size !== order.length ||
+        !order.every((id) => remaining.includes(id))) return false;
+    writes.push({ date: d.date, order, shift, skip });
+  }
+  S.update((st) => {
+    if (!st.dayOrders) st.dayOrders = {};
+    if (!st.dayTweaks) st.dayTweaks = {};
+    for (const w of writes) {
+      st.dayOrders[w.date] = w.order;
+      if (w.shift || w.skip.length) st.dayTweaks[w.date] = { shift: w.shift, skip: w.skip };
+      else delete st.dayTweaks[w.date];
+    }
+    for (const k of Object.keys(st.dayTweaks)) {
+      if (S.daysBetween(k, today) > 7) delete st.dayTweaks[k];
+    }
+  });
   return true;
 }
 

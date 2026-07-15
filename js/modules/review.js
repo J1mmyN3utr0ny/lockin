@@ -1,14 +1,18 @@
 // review.js — the end-of-week (Friday) Weekly Review. A cumulative test of everything learned so
-// far (this week + every week before it), pulled from all the knowledge decks. It also grades the
-// cards through the spaced-repetition system, so reviewing reinforces memory.
+// far: flashcards from all the knowledge decks PLUS real quiz questions from the lessons finished
+// this week — and a resurfaced sample of questions from PAST weeks' tests, so old material keeps
+// getting recalled long after its week (that's what moves it into long-term memory).
 import * as S from "../state.js";
 import { esc, barHTML, flashHTML, confetti, buzz, refresh, toast } from "../ui.js";
 import { allCards as cyberCards } from "../data/cyber_decks.js";
+import { lessons as richLessons } from "../data/lessons_content.js";
 import { hebrewVocab, englishVocab } from "../data/pet_content.js";
 import { pteVocab } from "../data/pte_vocab.js";
 import { cardRec, grade } from "../srs.js";
 
-const TARGET = 15; // items per review
+const TARGET = 15;      // items per review
+const MC_FRESH = 5;     // lesson questions from THIS week's completed lessons
+const MC_RESURFACED = 3; // questions pulled back from previous weeks' tests
 const hasHebrew = (s) => /[֐-׿]/.test(s);
 
 let queue = null, idx = 0, score = 0, flipped = false, reviewWeek = 0;
@@ -21,15 +25,48 @@ function pool() {
   return cyber.concat(heb, eng);
 }
 
-function buildQueue() {
-  const all = pool();
-  const seen = all.filter((c) => (cardRec(c.id).seen || 0) > 0);
-  let picked = shuffle(seen).slice(0, TARGET);
-  if (picked.length < TARGET) { // not much studied yet — top up with new material
-    const rest = shuffle(all.filter((c) => !picked.includes(c)));
-    picked = picked.concat(rest.slice(0, TARGET - picked.length));
+// Every quiz question of every COMPLETED rich lesson (hand-authored + AI-generated),
+// as a multiple-choice review item tagged with when the lesson was finished.
+function mcPool(s) {
+  const out = [];
+  for (const l of richLessons.concat(s.customLessons || [])) {
+    const rec = s.lessons[l.id];
+    if (!rec || !rec.done) continue;
+    (l.quiz || []).forEach((q, i) => out.push({
+      type: "mc", id: `${l.id}::q${i}`, lesson: l.title, doneDate: rec.date || "",
+      q: q.q, options: q.options, answer: q.answer, why: q.why
+    }));
   }
-  return shuffle(picked);
+  return out;
+}
+
+function buildQueue() {
+  const s = S.getState();
+  const wk = S.weekOf(S.todayKey());
+  const range = S.weekRange(wk);
+  const mcs = mcPool(s);
+
+  // fresh: questions from lessons completed this week
+  const fresh = mcs.filter((m) => m.doneDate >= range.start && m.doneDate <= range.end);
+  // resurfaced: questions that APPEARED in a previous week's test — variety + long-term recall
+  const pastIds = new Set();
+  for (const [w, r] of Object.entries(s.reviews)) {
+    if (Number(w) < wk) (r.qids || []).forEach((id) => pastIds.add(id));
+  }
+  const freshPick = shuffle(fresh).slice(0, MC_FRESH);
+  const resurfaced = shuffle(mcs.filter((m) => pastIds.has(m.id) && !freshPick.includes(m))).slice(0, MC_RESURFACED);
+  const mcPick = freshPick.concat(resurfaced);
+
+  // flashcards fill the remaining slots (studied cards first, then new material)
+  const all = pool();
+  const room = Math.max(0, TARGET - mcPick.length);
+  const seen = all.filter((c) => (cardRec(c.id).seen || 0) > 0);
+  let cards = shuffle(seen).slice(0, room);
+  if (cards.length < room) {
+    const rest = shuffle(all.filter((c) => !cards.includes(c)));
+    cards = cards.concat(rest.slice(0, room - cards.length));
+  }
+  return shuffle(mcPick.concat(cards));
 }
 function shuffle(a) { return a.map((x) => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map((p) => p[1]); }
 
@@ -44,9 +81,14 @@ function finish() {
   const s = S.getState();
   const wk = reviewWeek || S.weekOf(S.todayKey());
   const prev = s.reviews[wk];
-  const rec = { score, total: queue.length, date: S.todayKey() };
+  // remember which lesson questions appeared — future weeks resurface a sample of them
+  const qids = Array.from(new Set((queue.filter((i) => i.type === "mc").map((i) => i.id)).concat((prev && prev.qids) || [])));
+  const rec = { score, total: queue.length, date: S.todayKey(), qids };
   const improved = !prev || score >= prev.score;
-  S.update((st) => { if (!prev || score >= prev.score) st.reviews[wk] = rec; });
+  S.update((st) => {
+    if (!prev || score >= prev.score) st.reviews[wk] = rec;
+    else st.reviews[wk] = { ...prev, qids }; // keep the better score, still record the questions
+  });
   S.addXP(20 + score * 3);
   if (score / queue.length >= 0.8) confetti(36);
   buzz(25);
@@ -63,12 +105,48 @@ export default {
     // ---- active quiz ----
     if (queue && idx < queue.length) {
       const c = queue[idx];
-      view.innerHTML = `
+      const head = `
         <div class="row between">
-          <div><h1 style="margin:0">Weekly Review</h1><p class="muted" style="margin:0">Week ${reviewWeek} · card ${idx + 1}/${queue.length}</p></div>
+          <div><h1 style="margin:0">Weekly Review</h1><p class="muted" style="margin:0">Week ${reviewWeek} · item ${idx + 1}/${queue.length}</p></div>
           <span class="pill good">${score} correct</span>
         </div>
-        <div style="margin:10px 0">${barHTML((idx / queue.length) * 100)}</div>
+        <div style="margin:10px 0">${barHTML((idx / queue.length) * 100)}</div>`;
+
+      // Multiple-choice lesson question — objective, auto-scored.
+      if (c.type === "mc") {
+        view.innerHTML = `${head}
+          <div class="card">
+            <div class="small dim" style="margin-bottom:6px">📘 from "${esc(c.lesson)}"</div>
+            <div class="lq-q" style="font-weight:700">${esc(c.q)}</div>
+            <div class="lq-opts" style="margin-top:10px">
+              ${c.options.map((opt, oi) => `<button class="lq-opt" data-mc="${oi}">${esc(opt)}</button>`).join("")}
+            </div>
+            <div id="mc-why" class="small" style="margin-top:8px; display:none"></div>
+            <button class="btn primary block" id="mc-next" style="margin-top:10px; display:none">Next →</button>
+          </div>`;
+        let answered = false;
+        view.querySelectorAll("[data-mc]").forEach((b) => b.addEventListener("click", () => {
+          if (answered) return;
+          answered = true;
+          const oi = Number(b.dataset.mc);
+          const ok = oi === c.answer;
+          if (ok) { score++; buzz(); }
+          view.querySelectorAll("[data-mc]").forEach((x, xi) => {
+            x.disabled = true;
+            if (xi === c.answer) x.classList.add("correct");
+            else if (xi === oi) x.classList.add("wrong");
+            else x.classList.add("dim");
+          });
+          const why = view.querySelector("#mc-why");
+          why.style.display = "block";
+          why.innerHTML = `<span style="color:${ok ? "var(--good)" : "var(--bad)"}">${ok ? "✓" : "✗"} ${esc(c.why)}</span>`;
+          view.querySelector("#mc-next").style.display = "block";
+        }));
+        view.querySelector("#mc-next").addEventListener("click", () => { idx++; refresh(); });
+        return;
+      }
+
+      view.innerHTML = `${head}
         ${flashHTML({ front: esc(c.front), back: c.rtl ? `<span class="rtl" style="direction:rtl">${esc(c.back)}</span>` : esc(c.back), hint: "recall it, then tap", backHint: "Did you get it?", rtl: c.rtl })}
         <div class="row" id="grade" style="gap:10px; margin-top:12px; display:none">
           <button class="btn bad" id="g-miss" style="flex:1">Missed</button>
@@ -112,7 +190,7 @@ export default {
       <p class="muted">Week ${wk} · ${esc(S.prettyDate(range.start))} → ${esc(S.prettyDate(range.end))}</p>
       <div class="card">
         <b>Test everything through week ${wk}</b>
-        <p class="small muted" style="margin:6px 0 0">A mixed, cumulative recall test drawn from all your decks — Networks, Assembly, Linux, CMD, and Hebrew + English vocab. It covers <b>this week and every week before it</b>, and grades each card into your spaced-repetition memory. Do it every Friday.</p>
+        <p class="small muted" style="margin:6px 0 0">A mixed, cumulative test: real quiz questions from <b>the lessons you finished this week</b>, a resurfaced sample from <b>past weeks' tests</b> (so old material never fades), and recall flashcards from all your decks — graded into your spaced-repetition memory. Do it every Friday.</p>
         <button class="btn primary block" id="start" style="margin-top:12px">Start Week ${wk} review (${TARGET} items)</button>
       </div>
       ${weeks.length ? `<div class="card tight"><div class="section-title">Your reviews</div>

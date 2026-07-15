@@ -1,7 +1,8 @@
 // physique.js — the Workout tab. Mirrors the user's Gymmy app 1:1 (same six
 // workouts, proper exercise names) and adds a set logger for progressive overload.
 import * as S from "../state.js";
-import { esc, refresh, toast, buzz } from "../ui.js";
+import { esc, refresh, toast, buzz, openModal, closeModal } from "../ui.js";
+import { gemini, hasKey, extractJSON } from "../ai.js";
 import { days, dayById, weekPlan, philosophy, forearmFix, gymmyApp } from "../data/workout_program.js";
 
 // pick which workout the user is viewing (persisted lightly in the hash-less UI via a module var)
@@ -47,6 +48,94 @@ function clearSets(exId) {
   refresh();
 }
 
+// ---- 🤖 adjust TODAY's session to the user's predicament ---------------------
+// The program itself never changes — the AI may only bend today's session: drop
+// exercises, trim sets/reps, reorder. Output is validated against the day's own
+// exercise list; anything outside it is rejected wholesale.
+function vTweak(o, day) {
+  if (!o || typeof o !== "object") return "reply is not an object";
+  if (typeof o.note !== "string" || o.note.trim().length < 3 || o.note.length > 140) return "note must be a 3-140 char string";
+  const ids = new Set(day.exercises.map((e) => e.id));
+  const list = o.exercises;
+  if (!Array.isArray(list) || !list.length || list.length > day.exercises.length) return "exercises must be a non-empty array";
+  const seen = new Set();
+  for (const t of list) {
+    if (!t || !ids.has(t.id)) return "every exercise id must come from today's workout";
+    if (seen.has(t.id)) return "no duplicate exercises";
+    seen.add(t.id);
+    if (!Number.isInteger(t.sets) || t.sets < 1 || t.sets > 5) return "sets must be an integer 1-5";
+    if (t.reps !== null && (!Number.isInteger(t.reps) || t.reps < 5 || t.reps > 25)) return "reps must be null or an integer 5-25";
+  }
+  return null;
+}
+
+function adjustWorkout(day, key) {
+  if (!hasKey()) {
+    openModal(`<h2>Connect Gemini first 🤖</h2>
+      <p class="muted small">Paste your free key in <b>⚙ Settings → AI</b> (aistudio.google.com/apikey).</p>
+      <button class="btn primary block" data-close style="margin-top:10px">Got it</button>`);
+    return;
+  }
+  const m = openModal(`
+    <h2 style="margin:0">🤖 Adjust today's workout</h2>
+    <p class="small muted" style="margin:6px 0 10px">Tell it your predicament — it bends <b>${esc(day.name)}</b> for today only
+    (drop/lighten/reorder exercises). The program itself stays untouched.</p>
+    <textarea id="wt-in" rows="3" placeholder="e.g. slept 4 hours, low energy — make it lighter but keep the forearm work" style="width:100%"></textarea>
+    <div id="wt-status" class="small" style="margin-top:6px"></div>
+    <div class="row" style="gap:8px; margin-top:10px">
+      <button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn primary" id="wt-go" style="flex:1">Adjust</button>
+    </div>`);
+  const status = m.querySelector("#wt-status");
+  m.querySelector("#wt-go").addEventListener("click", async () => {
+    const text = m.querySelector("#wt-in").value.trim();
+    if (text.length < 4) { toast("Describe how you're doing first 🙂"); return; }
+    const go = m.querySelector("#wt-go");
+    go.disabled = true;
+    status.innerHTML = `<span class="dim">thinking…</span>`;
+    const table = day.exercises.map((e) =>
+      `id="${e.id}" · ${e.name} · ${e.sets}×${e.reps || "timed"} · ${e.target}`).join("\n");
+    let prompt =
+      `Today's planned workout (${day.name} — ${day.focus}):\n${table}\n\n` +
+      `The user says: "${text}"\n\n` +
+      `Adjust TODAY's session to fit. Reply with ONLY this JSON:\n` +
+      `{"note": string (short summary of what you changed and why), "exercises":[{"id": one of the ids above, "sets": 1-5, "reps": 5-25 or null for timed holds}]}\n` +
+      `Rules: only ids from the list, each at most once, in the order he should do them; lighter day = fewer sets/reps or ` +
+      `fewer exercises (keep at least the first compound unless he's clearly wrecked); never add new exercises.`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const raw = await gemini({
+          tier: "smart",
+          system: "You are the training assistant inside LockIn. The user follows a fixed 5-day program mirrored in his " +
+            "Gymmy app; you may bend ONE day's session to his current state (sleep, soreness, time) without changing the " +
+            "program. Preserve the session's main purpose when possible; forearms are a current growth focus. Reply with " +
+            "ONLY valid JSON matching the requested schema.",
+          messages: [{ role: "user", text: prompt }], temperature: 0.3
+        });
+        const parsed = extractJSON(raw);
+        const problem = vTweak(parsed, day);
+        if (!problem) {
+          S.update((st) => {
+            if (!st.workoutTweaks) st.workoutTweaks = {};
+            st.workoutTweaks[key] = { dayId: day.id, note: parsed.note.trim(), exercises: parsed.exercises };
+            for (const k of Object.keys(st.workoutTweaks)) {
+              if (S.daysBetween(k, key) > 3) delete st.workoutTweaks[k]; // stale tweaks die fast
+            }
+          });
+          closeModal(); toast("Workout adjusted for today 🤖"); refresh();
+          return;
+        }
+        if (attempt === 0) { prompt += `\n\nYour previous reply was rejected: ${problem}. Reply again with ONLY the corrected JSON.`; continue; }
+        status.innerHTML = `<span style="color:var(--bad)">The AI couldn't produce a valid adjustment — nothing changed.</span>`;
+      } catch (e) {
+        status.innerHTML = `<span style="color:var(--bad)">${esc(e.message === "NO_KEY" ? "No API key set." : e.message)}</span>`;
+        break;
+      }
+    }
+    go.disabled = false;
+  });
+}
+
 export default {
   id: "physique", label: "Workout",
   render(view) {
@@ -57,6 +146,16 @@ export default {
     const todayLog = S.getState().workoutLogs[key] || { ex: {} };
     const suggested = suggestedId ? dayById(suggestedId) : null;
     const onAndroid = /android/i.test(navigator.userAgent);
+
+    // Today's AI adjustment (if any) bends the session without touching the program.
+    const tweak = (S.getState().workoutTweaks || {})[key];
+    const tweakActive = !!(tweak && tweak.dayId === activeId);
+    const exList = tweakActive
+      ? tweak.exercises.map((t) => {
+          const base = day.exercises.find((e) => e.id === t.id) || { id: t.id, name: t.id, target: "" };
+          return { ...base, sets: t.sets, reps: t.reps };
+        })
+      : day.exercises;
 
     view.innerHTML = `
       <div class="card tight" style="border-color:rgba(52,211,153,.35)">
@@ -84,7 +183,16 @@ export default {
           <span class="pill accent">${esc(day.focus)}</span>
         </div>
         <p class="small muted" style="margin-top:6px">Warm-up: ${esc(day.warmup)}</p>
+        ${activeId === suggestedId ? `<button class="btn sm ghost block" id="wt-adjust" style="margin-top:8px">🤖 Adjust today's workout (sleep, soreness, time…)</button>` : ""}
       </div>
+
+      ${tweakActive ? `
+      <div class="card tight" style="border-color:rgba(167,139,250,.45); background:linear-gradient(180deg,rgba(167,139,250,.1),var(--card))">
+        <div class="row between" style="gap:10px">
+          <div class="small"><b>🤖 Adjusted for today:</b> ${esc(tweak.note)}</div>
+          <button class="btn sm ghost" id="wt-reset">↺ Full plan</button>
+        </div>
+      </div>` : ""}
 
       <div id="ex-list"></div>
 
@@ -96,8 +204,16 @@ export default {
     view.querySelectorAll("[data-day]").forEach((b) =>
       b.addEventListener("click", () => { viewDayId = b.dataset.day; refresh(); }));
 
+    const adj = view.querySelector("#wt-adjust");
+    if (adj) adj.addEventListener("click", () => adjustWorkout(day, key));
+    const wtReset = view.querySelector("#wt-reset");
+    if (wtReset) wtReset.addEventListener("click", () => {
+      S.update((st) => { if (st.workoutTweaks) delete st.workoutTweaks[key]; });
+      toast("Back to the full session."); refresh();
+    });
+
     const list = view.querySelector("#ex-list");
-    list.innerHTML = day.exercises.map((ex) => {
+    list.innerHTML = exList.map((ex) => {
       const hint = overloadHint(ex);
       const sets = (todayLog.ex && todayLog.ex[ex.id]) || [];
       return `

@@ -191,7 +191,9 @@ label.field { display: block; font-size: 12px; color: var(--muted); margin-botto
 .block.tap:hover .go { color: var(--accent); transform: translateX(2px); }
 .block.done { opacity: .58; }
 .block.done .body .t { text-decoration: line-through; text-decoration-color: var(--dim); }
-.block.done .chk { background: var(--good); border-color: var(--good); color: #06281c; animation: pop .3s cubic-bezier(.34,1.56,.64,1); }
+.block.done .chk { background: var(--good); border-color: var(--good); color: #06281c; }
+/* only the JUST-ticked checkmark animates — re-renders must not replay every old tick */
+.chk.pop { animation: pop .3s cubic-bezier(.34,1.56,.64,1); }
 @keyframes pop { 0% { transform: scale(.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
 .block.free { border-color: rgba(245,196,81,.4); border-left-color: var(--gold); background: linear-gradient(180deg, rgba(245,196,81,.08), var(--card)); }
 .block.free .time { color: var(--gold); }
@@ -214,8 +216,9 @@ label.field { display: block; font-size: 12px; color: var(--muted); margin-botto
 .block .grip:hover span { background: var(--accent); }
 .block .grip:active { cursor: grabbing; }
 .block .grip.locked { cursor: default; font-size: 10px; opacity: .45; background: transparent; display: grid; place-items: center; touch-action: auto; }
-.block.dragging { opacity: .9; z-index: 5; box-shadow: 0 10px 26px rgba(0,0,0,.5); border-color: var(--accent); transition: none; }
-.drop-ind { position: absolute; left: 2px; right: 2px; height: 3px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px rgba(79,140,255,.9); z-index: 6; pointer-events: none; }
+.block.dragging { opacity: .92; z-index: 5; box-shadow: 0 12px 28px rgba(0,0,0,.55); border-color: var(--accent); transition: none; position: relative; }
+/* while a drag is live, everyone else glides out of the way to clear the drop gap */
+.drag-live .block:not(.dragging) { transition: transform .18s ease; }
 
 /* Chained blocks (one inseparable unit — e.g. the gym trip) visually join up */
 .block.chained { margin-bottom: 3px; }
@@ -236,9 +239,9 @@ label.field { display: block; font-size: 12px; color: var(--muted); margin-botto
 .pvrow.done .chk { background: var(--good); border-color: var(--good); color: #06281c; }
 .pvghost { flex: none; width: 28px; text-align: center; color: var(--good); font-weight: 900; }
 
-/* 🔔 manager notes */
-.bell { position: relative; }
-.bell-badge { position: absolute; top: -5px; right: -5px; background: #ef4444; color: #fff; font-size: 9px; font-weight: 800; border-radius: 8px; padding: 1px 4px; line-height: 1.25; }
+/* background lesson-build indicator */
+.spin { display: inline-block; animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Week strip — scrolls through every remaining week of the summer */
 .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 10px 0 12px; }

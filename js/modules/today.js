@@ -6,7 +6,7 @@
 // the whole day around your constraints.
 import * as S from "../state.js";
 import { esc, barHTML, refresh, toast, confetti, buzz, openModal, closeModal } from "../ui.js";
-import { buildDay, taskBlockIds, unitize, placeUnit, setDayOrder, resetDayOrder, hasCustomOrder } from "../schedule.js";
+import { buildDay, taskBlockIds, unitize, placeUnit, applyAiPlan, resetDayOrder, hasCustomOrder } from "../schedule.js";
 import { gemini, hasKey, mdLite, extractJSON } from "../ai.js";
 import { openOffDayFlow, isOffDay } from "./offday.js";
 import { startFocus } from "../focus.js";
@@ -23,6 +23,10 @@ const CAT = {
 // Tick/untick one block of `dateKey`. Works for any day that has happened, so a
 // forgotten tick can be fixed later and still count. `celebrate` is off when the day
 // isn't today — back-filling Tuesday shouldn't throw confetti at you on Thursday.
+let lastTick = null; // { id, t } — so ONLY the newest checkmark plays the pop animation
+
+function justTicked(id) { return !!(lastTick && lastTick.id === id && Date.now() - lastTick.t < 800); }
+
 function toggle(dateKey, id, taskIds, celebrate = true) {
   let nowOn = false;
   S.update(() => {
@@ -31,6 +35,7 @@ function toggle(dateKey, id, taskIds, celebrate = true) {
     rec.blocks[id] = nowOn;
   });
   S.addXP(nowOn ? 10 : -10);
+  lastTick = nowOn ? { id, t: Date.now() } : null;
   if (nowOn) {
     buzz();
     const rec = S.dayRec(dateKey);
@@ -150,7 +155,7 @@ function previewDay(dateKey) {
           ${b.free
             ? `<span class="emoji" style="flex:none">${c.emoji}</span>`
             : editable
-              ? `<div class="chk" data-pvchk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`
+              ? `<div class="chk ${justTicked(b.id) ? "pop" : ""}" data-pvchk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`
               : `<span class="pvghost">${done ? "✓" : ""}</span>`}
         </div>`;
     }).join("");
@@ -250,13 +255,27 @@ async function expandBlock(day, b, i, dateKey) {
 
 // ---- AI: plan my day (reorder movable units from free-text constraints) --------
 
+function dayPromptLines(dateKey) {
+  const units = unitize(buildDay(dateKey).blocks);
+  const lines = units.map((u) => {
+    const first = u.blocks[0], last = u.blocks[u.blocks.length - 1];
+    const label = u.blocks.map((b) => b.title).join(" + ");
+    if (u.hard) return `HARD ANCHOR (never moves) at ${first.time}: ${label}`;
+    if (u.fixed) return `anchor (moves only with "shift") at ${first.time}: ${label}`;
+    return `id="${u.id}" (${first.time}–${last.time}): ${label}`;
+  }).join("\n");
+  const movable = units.filter((u) => !u.fixed).map((u) => u.id);
+  return { lines, movable };
+}
+
 function aiPlanDay(dateKey) {
   if (!hasKey()) { keyGate(); return; }
   const m = openModal(`
-    <h2 style="margin:0">🤖 Plan my day</h2>
-    <p class="small muted" style="margin:6px 0 10px">Tell it your constraints in plain words — it reorders the movable blocks
-    (anchors like the course, wind-down and sleep never move; the gym trip stays chained).</p>
-    <textarea id="plan-in" rows="3" placeholder="e.g. friends coming at 17:00, want the heavy thinking done by noon, gym as late as possible" style="width:100%"></textarea>
+    <h2 style="margin:0">🤖 Plan my days</h2>
+    <p class="small muted" style="margin:6px 0 10px">Tell it what's going on in plain words. It can reorder blocks, <b>skip</b> ones
+    that don't fit, <b>shift a whole day</b> (late hangout tonight → tomorrow starts later), and adjust tomorrow along with today.
+    The PET course and family dinner never move.</p>
+    <textarea id="plan-in" rows="3" placeholder="e.g. hanging out till late tonight — push tomorrow an hour; skip the snack; heavy thinking before noon" style="width:100%"></textarea>
     <div id="plan-status" class="small" style="margin-top:6px"></div>
     <div class="row" style="gap:8px; margin-top:10px">
       <button class="btn ghost" data-close style="flex:1">Cancel</button>
@@ -269,31 +288,36 @@ function aiPlanDay(dateKey) {
     const go = m.querySelector("#plan-go");
     go.disabled = true;
     status.innerHTML = `<span class="dim">thinking…</span>`;
-    const units = unitize(buildDay(dateKey).blocks);
-    const lines = units.map((u) => {
-      const first = u.blocks[0], last = u.blocks[u.blocks.length - 1];
-      const label = u.blocks.map((b) => b.title).join(" + ");
-      return u.fixed
-        ? `ANCHOR (cannot move) at ${first.time}: ${label}`
-        : `id="${u.id}" (${first.time}–${last.time}): ${label}`;
-    }).join("\n");
-    const movableIds = units.filter((u) => !u.fixed).map((u) => u.id);
+    const tomorrow = S.addDays(dateKey, 1);
+    const dToday = dayPromptLines(dateKey);
+    const dTmrw = dayPromptLines(tomorrow);
     let prompt =
-      `Today's plan, in order (anchors are immovable; movable units are reordered between them, keeping their durations):\n${lines}\n\n` +
-      `The user's constraints: "${constraints}"\n\n` +
-      `Reply with ONLY this JSON: {"order":[...]} — the ids of ALL the movable units (exactly these, each once: ${movableIds.join(", ")}) ` +
-      `in the new day order that best satisfies the constraints. Note: units only swap with units between the same two anchors.`;
+      `TODAY ${dateKey}:\n${dToday.lines}\n(movable ids: ${dToday.movable.join(", ")})\n\n` +
+      `TOMORROW ${tomorrow}:\n${dTmrw.lines}\n(movable ids: ${dTmrw.movable.join(", ")})\n\n` +
+      `The user says: "${constraints}"\n\n` +
+      `Per day you may: reorder movable units between their anchors; "skip" movable units that shouldn't happen; ` +
+      `"shift" the WHOLE day by minutes (-120..180) — wake, wind-down and sleep move with it, HARD anchors don't ` +
+      `(late night → positive shift the NEXT day so he still gets ~8h sleep).\n` +
+      `Reply with ONLY this JSON, including ONLY the days you change:\n` +
+      `{"days":[{"date":"YYYY-MM-DD","shift":0,"skip":[],"order":[every remaining movable id exactly once, in day order]}]}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const raw = await gemini({ tier: "fast", system: "You schedule a student's day. Reply with ONLY valid JSON.", messages: [{ role: "user", text: prompt }], temperature: 0.2 });
+        const raw = await gemini({
+          tier: "fast",
+          system: "You manage an 18-year-old student's daily schedule inside LockIn. Protect sleep (~8h) and the " +
+            "protected free time; the gym is best ~20:00. PET context: the exam is Sep 2-3 and practice volume should " +
+            "GROW as it approaches — cut PET blocks last; also note the PET course is moving to Monday+Thursday soon. " +
+            "Reply with ONLY valid JSON matching the requested schema.",
+          messages: [{ role: "user", text: prompt }], temperature: 0.2
+        });
         const parsed = extractJSON(raw);
-        if (setDayOrder(dateKey, parsed && parsed.order)) {
-          S.logEvent("adjust", "AI re-planned the day around user constraints");
-          closeModal(); toast("Day re-planned 🤖"); refresh();
+        if (applyAiPlan(parsed && parsed.days)) {
+          S.logEvent("adjust", "AI re-planned the day(s) around user constraints");
+          closeModal(); toast("Re-planned 🤖 — check today and tomorrow."); refresh();
           return;
         }
-        if (attempt === 0) { prompt += `\n\nYour previous order was rejected (it must contain exactly these ids once each: ${movableIds.join(", ")}). Reply again with ONLY the corrected JSON.`; continue; }
-        status.innerHTML = `<span style="color:var(--bad)">The AI couldn't produce a valid order — nothing was changed.</span>`;
+        if (attempt === 0) { prompt += `\n\nYour previous plan was rejected (dates must be today/tomorrow; "order" must contain every remaining movable id exactly once; shift -120..180). Reply again with ONLY the corrected JSON.`; continue; }
+        status.innerHTML = `<span style="color:var(--bad)">The AI couldn't produce a valid plan — nothing was changed.</span>`;
       } catch (e) {
         status.innerHTML = `<span style="color:var(--bad)">${esc(e.message === "NO_KEY" ? "No API key set." : e.message)}</span>`;
         break;
@@ -332,7 +356,7 @@ function blocksHTML(day, rec, nowI, unitByBlock) {
         </div>
         ${tap ? `<span class="go">›</span>` : ""}
         ${b.free ? `<span class="cat emoji">${c.emoji}</span>`
-          : `<div class="chk" data-chk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`}
+          : `<div class="chk ${justTicked(b.id) ? "pop" : ""}" data-chk="${b.id}" title="mark done">${done ? "✓" : ""}</div>`}
       </div>`;
   }).join("");
 }
@@ -370,20 +394,22 @@ function attachDrag(wrap, key) {
       const i = metas.findIndex((mt) => mt.id === unitId);
       let lo = i; while (lo > 0 && !metas[lo - 1].fixed) lo--;
       let hi = i; while (hi < metas.length - 1 && !metas[hi + 1].fixed) hi++;
-      const ind = document.createElement("div");
-      ind.className = "drop-ind";
-      ind.style.display = "none";
-      wrap.appendChild(ind);
-      drag = { unitId, startY: e.pageY, metas, candidates, unit: metas[i], lo, hi, ind, slot: null, moved: false,
-               wrapTop: wrap.getBoundingClientRect().top + window.scrollY };
+      drag = { unitId, startY: e.pageY, lastY: e.pageY, metas, candidates, unit: metas[i], lo, hi,
+               dragH: metas[i].bottom - metas[i].top + 9, slot: null, moved: false };
       try { grip.setPointerCapture(e.pointerId); } catch (err) { /* capture is best-effort */ }
     });
     grip.addEventListener("pointermove", (e) => {
       if (!drag) return;
       const dy = e.pageY - drag.startY;
       if (!drag.moved && Math.abs(dy) < 6) return;
-      drag.moved = true;
-      drag.unit.els.forEach((el) => { el.classList.add("dragging"); el.style.transform = `translateY(${dy}px)`; });
+      if (!drag.moved) { drag.moved = true; wrap.classList.add("drag-live"); }
+      // the held unit "flops": it tilts with the direction of motion and floats above
+      const tilt = Math.max(-3.5, Math.min(3.5, (e.pageY - drag.lastY) * 0.55));
+      drag.lastY = e.pageY;
+      drag.unit.els.forEach((el) => {
+        el.classList.add("dragging");
+        el.style.transform = `translateY(${dy}px) rotate(${tilt.toFixed(2)}deg) scale(1.02)`;
+      });
       // auto-scroll near the viewport edges so long days are draggable end-to-end
       if (e.clientY < 90) window.scrollBy(0, -12);
       else if (e.clientY > innerHeight - 90) window.scrollBy(0, 12);
@@ -391,16 +417,23 @@ function attachDrag(wrap, key) {
       let slot = drag.candidates.filter((mt) => mt.mid < e.pageY).length;
       slot = Math.max(drag.lo, Math.min(drag.hi, slot));
       drag.slot = slot;
-      const y = slot === drag.candidates.length ? drag.candidates[drag.candidates.length - 1].bottom
-        : drag.candidates[slot].top;
-      drag.ind.style.display = "block";
-      drag.ind.style.top = `${y - drag.wrapTop - 4}px`;
+      // everyone else slides out of the way, clearing a gap exactly the unit's size
+      drag.candidates.forEach((cand, ci) => {
+        const below = cand.top > drag.unit.top;
+        const t = (below ? -drag.dragH : 0) + (ci >= slot ? drag.dragH : 0);
+        const want = t ? `translateY(${t}px)` : "";
+        if (cand._t !== want) {
+          cand._t = want;
+          cand.els.forEach((el) => { el.style.transform = want; });
+        }
+      });
     });
-    const finish = (commit) => (e) => {
+    const finish = (commit) => () => {
       if (!drag) return;
-      const { unitId, unit, ind, slot, moved } = drag;
+      const { unitId, unit, metas, slot, moved } = drag;
+      wrap.classList.remove("drag-live");
       unit.els.forEach((el) => { el.classList.remove("dragging"); el.style.transform = ""; });
-      ind.remove();
+      metas.forEach((mt) => { mt._t = ""; mt.els.forEach((el) => { el.style.transform = ""; }); });
       drag = null;
       if (commit && moved && slot !== null) {
         if (placeUnit(key, unitId, slot)) { buzz(); refresh(); }

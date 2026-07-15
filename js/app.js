@@ -4,7 +4,7 @@ import { $, $$, esc, toast, openModal, closeModal, confirmModal, confetti, buzz 
 import * as AI from "./ai.js";
 import * as Lab from "./lab.js";
 
-import { managerTick, unreadCount, openNotifications } from "./modules/manager.js";
+import { autoBuildTick } from "./modules/lesson_gen.js";
 import today from "./modules/today.js";
 import physique from "./modules/physique.js";
 import diet from "./modules/diet.js";
@@ -58,16 +58,13 @@ function renderTopbar() {
   const el = $("#topbar-right");
   const streak = S.computeStreak();
   const lp = S.levelProgress(S.getState().xp || 0);
-  const unread = unreadCount();
   el.innerHTML = `
     <span class="pill xp" title="${lp.into}/${lp.need} XP to Lv ${lp.lvl + 1}">⚡ Lv ${lp.lvl}</span>
     ${streak > 0 ? `<span class="pill gold">🔥 ${streak}</span>` : ""}
     ${mode === "test"
       ? `<span class="pill accent">Proving Grounds</span>`
       : `<span class="pill">${dLeft >= 0 ? dLeft + "d to Sep 30" : "summer over"}</span>`}
-    <button class="btn sm ghost bell" id="bell" aria-label="manager notes">🔔${unread ? `<span class="bell-badge">${unread > 9 ? "9+" : unread}</span>` : ""}</button>
     <button class="btn sm ghost" id="gear" aria-label="settings">⚙</button>`;
-  $("#bell").addEventListener("click", openNotifications);
   $("#gear").addEventListener("click", openSettings);
 }
 
@@ -110,11 +107,13 @@ function openSettings() {
     <hr class="hr" />
     <label class="field">🤖 AI — Gemini key (free)</label>
     <input id="set-ai" type="password" placeholder="paste API key" value="${esc(s.settings.geminiKey || "")}" />
+    <label class="field" style="margin-top:8px">Backup key (optional) — takes over when the first hits its rate limit</label>
+    <input id="set-ai2" type="password" placeholder="paste a second free key from another Google account" value="${esc(s.settings.geminiKey2 || "")}" />
     <div class="row" style="gap:8px; margin-top:8px">
-      <button class="btn sm" id="set-ai-save" style="flex:1">Save key</button>
+      <button class="btn sm" id="set-ai-save" style="flex:1">Save keys</button>
       <button class="btn sm primary" id="set-ai-test" style="flex:1">Test</button>
     </div>
-    <p class="small dim" style="margin-top:6px">Get a free key at <span class="kbd">aistudio.google.com/apikey</span>. Powers the tutor, Build Coach, lesson generator, day planner and the 🔔 manager — big jobs use <b>2.5 Flash</b>, small ones <b>Flash-Lite</b>. Stored only on this device.</p>
+    <p class="small dim" style="margin-top:6px">Get free keys at <span class="kbd">aistudio.google.com/apikey</span>. Powers the tutor, Build Coach, lesson generator, day planner and workout adjuster — big jobs use <b>3.5 Flash</b>, small ones <b>Flash-Lite</b>. Stored only on this device.</p>
     <div id="set-ai-status" class="small" style="margin-top:4px"></div>
 
     <hr class="hr" />
@@ -160,12 +159,16 @@ function openSettings() {
   m.querySelector("#set-date-clear").addEventListener("click", () => {
     S.update((st) => { st.settings.debugDate = null; }); closeModal(); route();
   });
+  const saveKeys = () => S.update((st) => {
+    st.settings.geminiKey = $("#set-ai").value.trim();
+    st.settings.geminiKey2 = $("#set-ai2").value.trim();
+  });
   m.querySelector("#set-ai-save").addEventListener("click", () => {
-    AI.setKey($("#set-ai").value);
-    toast(AI.hasKey() ? "AI key saved" : "Key cleared");
+    saveKeys();
+    toast(AI.hasKey() ? "AI keys saved" : "Keys cleared");
   });
   m.querySelector("#set-ai-test").addEventListener("click", async () => {
-    AI.setKey($("#set-ai").value);
+    saveKeys();
     const status = $("#set-ai-status");
     if (!AI.hasKey()) { status.innerHTML = `<span style="color:var(--warn)">Paste a key first.</span>`; return; }
     status.innerHTML = `<span class="dim">Testing…</span>`;
@@ -266,11 +269,9 @@ function boot() {
   onboard();
   Lab.startAppSync(); // keep phone and PC in step through the Lab hub
 
-  // The AI manager takes a throttled look at the day shortly after launch.
-  setTimeout(async () => {
-    const n = await managerTick();
-    if (n > 0) toast(`🔔 The manager left you ${n} note${n > 1 ? "s" : ""}`);
-  }, 3000);
+  // Quietly grow the Learn hub: shortly after launch (throttled inside), the AI builds
+  // one lesson for whichever track is emptiest — no clicks needed, no interruptions.
+  setTimeout(() => { autoBuildTick(); }, 6000);
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

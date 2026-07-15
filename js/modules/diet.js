@@ -3,6 +3,18 @@
 import * as S from "../state.js";
 import { esc, barHTML, refresh, toast, buzz, sparkSVG } from "../ui.js";
 import { mealSlots, targets, tips } from "../data/meals.js";
+import { buildDay } from "../schedule.js";
+
+// Each meal slot reads its time from TODAY's actual schedule (so a shifted or
+// reordered day moves the meals with it); the static time is only a fallback.
+const SLOT_BLOCKS = { m1: ["breakfast", "wake"], s1: [], m2: ["lunch"], s2: ["snack"], m3: ["dinner"] };
+function slotTime(blocks, m) {
+  for (const id of SLOT_BLOCKS[m.id] || []) {
+    const b = blocks.find((x) => x.id === id);
+    if (b && /^\d/.test(b.time)) return b.time;
+  }
+  return m.time.split(" ")[0];
+}
 
 function toggleMeal(key, id) {
   let nowOn = false;
@@ -25,6 +37,10 @@ export default {
     const done = mealSlots.filter((m) => ticks[m.id]).length;
     const pct = (done / mealSlots.length) * 100;
     const tg = targets(s.profile.bodyweightKg);
+    const dayBlocks = buildDay(key).blocks;
+    // slot grams are shares of ONE daily number, so the five together = the target
+    const proteinMid = Math.round((tg.proteinLow + tg.proteinHigh) / 2);
+    const slotGrams = (m) => Math.round(proteinMid * m.frac);
 
     // bodyweight trend
     const entries = Object.entries(s.body.weights).sort((a, b) => a[0] < b[0] ? -1 : 1);
@@ -44,6 +60,7 @@ export default {
           <div class="stat"><div class="n" style="color:var(--good)">${tg.proteinLow}–${tg.proteinHigh}g</div><div class="l">Protein / day</div></div>
           <div class="stat"><div class="n" style="color:var(--warn)">~${tg.kcal}</div><div class="l">Calories (lean-bulk)</div></div>
         </div>
+        <p class="small dim" style="margin:8px 0 0">Slot times follow <b>today's schedule</b> (they move when your day does), and the five amounts below add up to ~${mealSlots.reduce((n, m) => n + slotGrams(m), 0)}g — the middle of your target.</p>
       </div>
 
       <div id="meals"></div>
@@ -70,9 +87,9 @@ export default {
       const on = !!ticks[m.id];
       return `
         <div class="block ${on ? "done" : ""}" style="--cat:#f59e0b" data-meal="${m.id}">
-          <div class="time" style="min-width:64px">${esc(m.time.split(" ")[0])}</div>
+          <div class="time" style="min-width:64px">${esc(slotTime(dayBlocks, m))}</div>
           <div class="body">
-            <div class="t">${esc(m.label)} <span class="tag">${esc(m.target)}</span></div>
+            <div class="t">${esc(m.label)} <span class="tag">~${slotGrams(m)}g protein</span></div>
             <div class="s">${esc(m.ideas.join(" · "))}</div>
           </div>
           <div class="chk" data-mealchk="${m.id}">${on ? "✓" : ""}</div>

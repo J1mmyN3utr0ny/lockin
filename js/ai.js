@@ -23,6 +23,14 @@ export function getKey() { return (S.getState().settings.geminiKey || "").trim()
 export function hasKey() { return getKey().length > 20; }
 export function setKey(k) { S.update((st) => { st.settings.geminiKey = (k || "").trim(); }); }
 
+// Backup key: a second free-tier key that takes over the moment the primary gets
+// rate-limited (429), doubling the effective quota. Session remembers which key works.
+function allKeys() {
+  const s = S.getState().settings;
+  return [(s.geminiKey || "").trim(), (s.geminiKey2 || "").trim()].filter((k) => k.length > 20);
+}
+let keyIx = 0; // rotates on 429 so later calls start from the key that still has quota
+
 // The tutor's fixed persona — enforces "guide, don't solve" and the user's real goals.
 export const PERSONA =
   "You are the built-in tutor inside 'LockIn', a study app for an 18-year-old Israeli software-engineering " +
@@ -36,10 +44,11 @@ export const PERSONA =
   "himself in a real terminal/editor. Keep answers focused and under ~200 words unless he asks to go deep.";
 
 // Low-level call. Picks the model from `tier` (or an explicit `model`), walking the
-// tier's fallback chain when a model isn't served. Returns text or throws a friendly Error.
+// tier's fallback chain when a model isn't served — and rotating to the BACKUP key when
+// the active one is rate-limited. Returns text or throws a friendly Error.
 export async function gemini({ system, messages, temperature = 0.7, tier = "smart", model }) {
-  const key = getKey();
-  if (!key) throw new Error("NO_KEY");
+  const keys = allKeys();
+  if (!keys.length) throw new Error("NO_KEY");
   const chain = model ? [model] : (MODEL_TIERS[tier] || MODEL_TIERS.smart);
   const start = Math.max(0, picked[tier] ? chain.indexOf(picked[tier]) : 0);
   let lastErr = null;
@@ -49,7 +58,7 @@ export async function gemini({ system, messages, temperature = 0.7, tier = "smar
     const body = {
       contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
       // 2.5 models think by default: disable it so tokens go to the answer, not silent
-      // reasoning. (2.0 models reject thinkingConfig, so only send it where supported.)
+      // reasoning. (other generations reject thinkingConfig, so only send it where supported.)
       generationConfig: {
         temperature, maxOutputTokens: 2048,
         ...(mdl.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {})
@@ -57,27 +66,39 @@ export async function gemini({ system, messages, temperature = 0.7, tier = "smar
     };
     if (system) body.system_instruction = { parts: [{ text: system }] };
 
-    let res;
-    try {
-      res = await fetch(ENDPOINT(key, mdl), {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      });
-    } catch (e) { throw new Error("Network error — are you online? (The AI needs internet; the rest of the app doesn't.)"); }
+    for (let kt = 0; kt < keys.length; kt++) {
+      const key = keys[(keyIx + kt) % keys.length];
+      let res;
+      try {
+        res = await fetch(ENDPOINT(key, mdl), {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        });
+      } catch (e) { throw new Error("Network error — are you online? (The AI needs internet; the rest of the app doesn't.)"); }
 
-    // 404 = model not served for this key; 400 can be a model-specific request-shape
-    // rejection (e.g. thinking params) — both walk the chain instead of failing hard.
-    if (res.status === 404) { lastErr = new Error(`Model ${mdl} isn't available for this key.`); continue; }
-    if (res.status === 400) { lastErr = new Error("Gemini rejected the request — your API key may be wrong. Re-check it in ⚙ Settings."); continue; }
-    if (res.status === 403) throw new Error("Access denied (403) — the key isn't authorized for the Gemini API. Make a fresh free key at aistudio.google.com.");
-    if (res.status === 429) throw new Error("Rate limit hit (free tier) — wait a minute and try again.");
-    if (!res.ok) throw new Error(`Gemini error ${res.status}. Try again shortly.`);
+      // 429 → the active key is out of quota: rotate to the backup and retry in place.
+      if (res.status === 429) {
+        lastErr = new Error(keys.length > 1
+          ? "Both Gemini keys are rate-limited — wait a minute and try again."
+          : "Rate limit hit (free tier) — wait a minute, or add a backup key in ⚙ Settings.");
+        continue;
+      }
+      // 404 = model not served for this key; 400 can be a model-specific request-shape
+      // rejection (e.g. thinking params) — both walk the model chain instead of failing hard.
+      if (res.status === 404) { lastErr = new Error(`Model ${mdl} isn't available for this key.`); break; }
+      if (res.status === 400) { lastErr = new Error("Gemini rejected the request — your API key may be wrong. Re-check it in ⚙ Settings."); break; }
+      if (res.status === 403) throw new Error("Access denied (403) — the key isn't authorized for the Gemini API. Make a fresh free key at aistudio.google.com.");
+      if (!res.ok) throw new Error(`Gemini error ${res.status}. Try again shortly.`);
 
-    const data = await res.json();
-    const cand = data.candidates && data.candidates[0];
-    const text = cand && cand.content && cand.content.parts && cand.content.parts.map((p) => p.text).join("");
-    if (!text) throw new Error("The AI returned nothing — try rephrasing.");
-    picked[tier] = mdl;
-    return text.trim();
+      const data = await res.json();
+      const cand = data.candidates && data.candidates[0];
+      const text = cand && cand.content && cand.content.parts && cand.content.parts.map((p) => p.text).join("");
+      if (!text) throw new Error("The AI returned nothing — try rephrasing.");
+      picked[tier] = mdl;
+      keyIx = (keyIx + kt) % keys.length; // remember which key still has quota
+      return text.trim();
+    }
+    // all keys 429'd on this model — free-tier quotas are per-model, so the next
+    // model in the chain may still have room; keep walking.
   }
   throw lastErr || new Error("No Gemini model available for this key.");
 }

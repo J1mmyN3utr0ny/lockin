@@ -6,7 +6,7 @@ import * as S from "../state.js";
 import { esc, refresh, toast, confetti, buzz } from "../ui.js";
 import { mdLite, openTutor } from "../ai.js";
 import { lessonTracks, lessons } from "../data/lessons_content.js";
-import { openGenerator, deleteCustomLesson } from "./lesson_gen.js";
+import { openGenerator, deleteCustomLesson, genStatus } from "./lesson_gen.js";
 
 let openId = null;                 // currently open lesson
 const picks = {};                  // `${lessonId}:${qi}` -> chosen option index (session only)
@@ -142,11 +142,20 @@ export default {
     const all = allLessons();
     const total = all.length;
     const done = all.filter((l) => isDone(l.id)).length;
+    const gen = genStatus();
     view.innerHTML = `
       <div class="card" style="border-color:rgba(34,211,238,.35)">
         <b class="emoji">📖 Lessons — read & understand</b>
         <p class="small muted" style="margin:6px 0 0">The theory half: illustrated, in-depth lessons with diagrams, animations and videos. Hands-on coding lives in the <b>Lab</b>. ${done}/${total} done.</p>
       </div>
+      ${gen ? `
+      <div class="card tight" style="border-color:rgba(167,139,250,.45); background:linear-gradient(180deg,rgba(167,139,250,.1),var(--card))">
+        <div class="row" style="gap:10px; align-items:center">
+          <span class="spin" style="font-size:16px">⚙️</span>
+          <div class="small"><b>Building "${esc(gen.topic)}"</b> (${esc(gen.trackName)}) — ${esc(gen.label)}…
+            <span class="dim">runs in the background; closing anything won't stop it.</span></div>
+        </div>
+      </div>` : ""}
       ${lessonTracks.map((t) => {
         const ls = inTrack(t.id);
         return `
