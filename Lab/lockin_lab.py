@@ -13,6 +13,7 @@ Pure Python standard library (tkinter + urllib). Run: python lockin_lab.py
 import datetime
 import json
 import os
+import sys
 import threading
 import urllib.parse
 import urllib.request
@@ -27,6 +28,10 @@ from editor import CodeEditor
 from sync import SyncServer
 from leet import daily_problem
 import expansions
+try:
+    from explain_questions import EXPLAIN_QUESTIONS
+except Exception:
+    EXPLAIN_QUESTIONS = {}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(HERE, "lab_state.json")
@@ -57,11 +62,14 @@ def gemini(api_key, system, user, temperature=0.6):
     last_err = None
     for mi in range(_model_ix[0], len(MODELS)):
         model = MODELS[mi]
-        gen = {"temperature": temperature, "maxOutputTokens": 2048}
+        gen = {"temperature": temperature, "maxOutputTokens": 4096}
+        # Thinking control differs per generation: 2.5 takes thinkingBudget (0 = off);
+        # 3.x takes thinkingLevel ("minimal" = lightest). Unmanaged, a 3.x model can
+        # think its whole token budget away and return an EMPTY reply.
         if model.startswith("gemini-2.5"):
-            # 2.5 thinks by default; disable it so the token budget produces a visible answer.
-            # (3.x models reject this parameter shape, so it's only sent where supported.)
             gen["thinkingConfig"] = {"thinkingBudget": 0}
+        elif model.startswith("gemini-3"):
+            gen["thinkingConfig"] = {"thinkingLevel": "minimal"}
         body = {"system_instruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": user}]}],
                 "generationConfig": gen}
@@ -83,10 +91,13 @@ def gemini(api_key, system, user, temperature=0.6):
         except urllib.error.URLError:
             raise RuntimeError("Network error — are you online?")
         cands = data.get("candidates") or []
-        if not cands:
-            raise RuntimeError("The tutor returned nothing — rephrase and retry.")
+        text = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", [])).strip() if cands else ""
+        if not text:
+            # empty reply (thinking ate the budget, or a bare candidate) — walk the chain
+            last_err = "%s returned an empty reply — trying the next model." % model
+            continue
         _model_ix[0] = mi
-        return "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", [])).strip()
+        return text
     raise RuntimeError(last_err or "No Gemini model available for this key.")
 
 
@@ -107,10 +118,21 @@ def extract_json(text):
     return json.loads(t[start:end + 1])
 
 
+# The Lab is now two apps sharing one engine, chosen by mode:
+#   "code"   → LockIn Lab: tracks you WRITE + RUN code for, with the editor + runner.
+#   "theory" → LockIn Study: the concept tracks (no code to run) with a Workbench —
+#              an AI-graded answer console where you explain what you learned and get
+#              scored feedback + XP. That graded loop is the theory app's "terminal".
+CODE_TRACKS = ["python", "csharp", "c", "asm", "dsa"]
+THEORY_TRACKS = ["cyber_high", "cyber_low", "linux", "cmd"]
+APP_TITLE = {"code": "LockIn Lab", "theory": "LockIn Study"}
+
+
 class Lab(tk.Tk):
-    def __init__(self):
+    def __init__(self, mode="code"):
         super().__init__()
-        self.title("LockIn Lab")
+        self.mode = mode if mode in ("code", "theory") else "code"
+        self.title(APP_TITLE[self.mode])
         self.configure(bg=C["bg"])
         self.geometry("1280x820")
         self.minsize(1040, 640)
@@ -206,15 +228,22 @@ class Lab(tk.Tk):
         # toolbar
         tb = tk.Frame(self, bg=C["panel"], height=46)
         tb.pack(fill="x", side="top")
-        tk.Label(tb, text="◆ LockIn Lab", bg=C["panel"], fg=C["acc"], font=H1).pack(side="left", padx=(14, 8))
-        self.run_btn = self._btn(tb, "▶ Run", self.act_run, "run"); self.run_btn.pack(side="left", padx=4, pady=6)
-        self.test_btn = self._btn(tb, "✓ Run Tests", self.act_test, "test"); self.test_btn.pack(side="left", padx=4)
-        self.reset_btn = self._btn(tb, "⟲ Reset", self.act_reset); self.reset_btn.pack(side="left", padx=4)
-        tk.Label(tb, text="lang", bg=C["panel"], fg=C["dim"], font=UI).pack(side="left", padx=(12, 4))
+        title = "◆ LockIn Lab" if self.mode == "code" else "◆ LockIn Study"
+        tk.Label(tb, text=title, bg=C["panel"], fg=C["acc"], font=H1).pack(side="left", padx=(14, 8))
         self.lang_var = tk.StringVar(value="python")
-        self.lang_menu = ttk.Combobox(tb, textvariable=self.lang_var, values=["python", "c", "csharp", "asm"], width=9, state="readonly")
-        self.lang_menu.pack(side="left")
-        self.lang_menu.bind("<<ComboboxSelected>>", self._lang_changed)
+        if self.mode == "code":
+            self.run_btn = self._btn(tb, "▶ Run", self.act_run, "run"); self.run_btn.pack(side="left", padx=4, pady=6)
+            self.test_btn = self._btn(tb, "✓ Run Tests", self.act_test, "test"); self.test_btn.pack(side="left", padx=4)
+            self.reset_btn = self._btn(tb, "⟲ Reset", self.act_reset); self.reset_btn.pack(side="left", padx=4)
+            tk.Label(tb, text="lang", bg=C["panel"], fg=C["dim"], font=UI).pack(side="left", padx=(12, 4))
+            self.lang_menu = ttk.Combobox(tb, textvariable=self.lang_var, values=["python", "c", "csharp", "asm"], width=9, state="readonly")
+            self.lang_menu.pack(side="left")
+            self.lang_menu.bind("<<ComboboxSelected>>", self._lang_changed)
+        else:
+            # theory app: the Workbench is graded by AI, not run — so no Run/Tests/lang.
+            self.grade_btn = self._btn(tb, "📝 Grade my answer", self.act_grade, "test"); self.grade_btn.pack(side="left", padx=4, pady=6)
+            self.reset_btn = self._btn(tb, "⟲ Clear", self.act_reset); self.reset_btn.pack(side="left", padx=4)
+            self.run_btn = None; self.test_btn = None
 
         self._btn(tb, "⚙", self.open_settings).pack(side="right", padx=(4, 12), pady=6)
         self.ai_dot = tk.Label(tb, text="", bg=C["panel"], font=UI); self.ai_dot.pack(side="right", padx=6)
@@ -235,6 +264,10 @@ class Lab(tk.Tk):
         cpw = ttk.Panedwindow(center, orient="vertical")
         cpw.pack(fill="both", expand=True)
         edwrap = tk.Frame(cpw, bg=C["editor"])
+        if self.mode == "theory":
+            # the Workbench: where he writes his explanations/answers for AI grading.
+            tk.Label(edwrap, text="  📝 Workbench — write your answer here, then “Grade my answer”",
+                     bg=C["editor"], fg=C["dim"], font=UI, anchor="w").pack(fill="x", pady=(4, 0))
         self.editor = CodeEditor(edwrap, C, MONO, on_cursor=self._cursor)
         self.editor.pack(fill="both", expand=True)
         cpw.add(edwrap, weight=4)
@@ -244,8 +277,11 @@ class Lab(tk.Tk):
         self.console.pack(fill="both", expand=True)
         self.out_txt = self._console_text()
         self.test_txt = self._console_text()
-        self.console.add(self.out_txt.master, text="  Output  ")
-        self.console.add(self.test_txt.master, text="  Tests  ")
+        if self.mode == "code":
+            self.console.add(self.out_txt.master, text="  Output  ")
+            self.console.add(self.test_txt.master, text="  Tests  ")
+        else:
+            self.console.add(self.out_txt.master, text="  Feedback  ")
         cpw.add(console, weight=2)
 
         # right: lesson + tutor
@@ -262,7 +298,8 @@ class Lab(tk.Tk):
         self._btn(aibar, "💡 Hint", self.act_hint).pack(side="left", padx=4, pady=6)
         self._btn(aibar, "❔ Ask", self.act_ask).pack(side="left", padx=4)
         self._btn(aibar, "📖 Explain", self.act_explain).pack(side="left", padx=4)
-        self._btn(aibar, "🏗 Guide me", self.act_guide).pack(side="left", padx=4)
+        if self.mode == "code":
+            self._btn(aibar, "🏗 Guide me", self.act_guide).pack(side="left", padx=4)
         self._btn(aibar, "➕ AI practice", self.act_practice).pack(side="left", padx=4)
         self.done_btn = self._btn(aibar, "Mark done", self.act_done, "primary"); self.done_btn.pack(side="right", padx=8)
 
@@ -307,25 +344,29 @@ class Lab(tk.Tk):
 
     # -------- tree --------
     def _populate_tree(self):
-        self.tree.insert("", "end", iid="daily", text="  ⭐  LeetCode — Daily")
-        _, tname = self._todays_track()
-        self.tree.insert("", "end", iid="dailyai", text="  ✨  Today's AI lesson — %s" % tname)
-        base_order = ["python", "csharp", "c", "asm", "linux", "cyber_high", "cyber_low", "cmd"]
+        self.tree.insert("", "end", iid="dailyai", text="  ✨  Today's AI lesson — %s" % self._todays_track()[1])
 
-        dsa = self.courses["dsa"]
-        dnode = self.tree.insert("", "end", iid="track:dsa", text="  🧠  Data Structures & Algorithms", open=True)
-        self._track_children(dnode, "dsa", dsa)
-
-        cnode = self.tree.insert("", "end", iid="courses", text="  📚  Cyber courses", open=True)
-        for tid in base_order:
-            c = self.courses[tid]
-            tnode = self.tree.insert(cnode, "end", iid="track:" + tid, text="   " + c["title"].split("—")[0].strip())
-            self._track_children(tnode, tid, c)
-
-        bnode = self.tree.insert("", "end", iid="leetbrowse", text="  🧩  LeetCode — Browse")
-        for p in content.PROBLEMS:
-            mark = "✓ " if self._solved(p["id"]) else "•  "
-            self.tree.insert(bnode, "end", iid="leet:" + p["id"], text="   %s%s" % (mark, p["title"]))
+        if self.mode == "code":
+            # DSA gets its own top-level group; then the compiled-language tracks.
+            dnode = self.tree.insert("", "end", iid="track:dsa", text="  🧠  Data Structures & Algorithms", open=True)
+            self._track_children(dnode, "dsa", self.courses["dsa"])
+            cnode = self.tree.insert("", "end", iid="courses", text="  💻  Code tracks", open=True)
+            for tid in ["python", "csharp", "c", "asm"]:
+                c = self.courses[tid]
+                tnode = self.tree.insert(cnode, "end", iid="track:" + tid, text="   " + c["title"].split("—")[0].strip())
+                self._track_children(tnode, tid, c)
+            bnode = self.tree.insert("", "end", iid="leetbrowse", text="  🧩  LeetCode — Browse")
+            self.tree.insert("", "end", iid="daily", text="  ⭐  LeetCode — Daily")
+            self.tree.move("daily", "", 1)  # keep Daily near the top
+            for p in content.PROBLEMS:
+                mark = "✓ " if self._solved(p["id"]) else "•  "
+                self.tree.insert(bnode, "end", iid="leet:" + p["id"], text="   %s%s" % (mark, p["title"]))
+        else:
+            cnode = self.tree.insert("", "end", iid="courses", text="  🧠  Theory tracks", open=True)
+            for tid in THEORY_TRACKS:
+                c = self.courses[tid]
+                tnode = self.tree.insert(cnode, "end", iid="track:" + tid, text="   " + c["title"].split("—")[0].strip())
+                self._track_children(tnode, tid, c)
 
     def _track_children(self, node, tid, course):
         for i, L in enumerate(course["lessons"]):
@@ -335,7 +376,7 @@ class Lab(tk.Tk):
         self.tree.insert(node, "end", iid="cap:" + tid, text="    🏁 " + course["capstone"]["name"])
 
     def _refresh_marks(self):
-        for iid in self.tree.get_children("leetbrowse"):
+        for iid in (self.tree.get_children("leetbrowse") if self.tree.exists("leetbrowse") else ()):
             pid = iid.split(":", 1)[1]
             p = content.BY_ID[pid]
             self.tree.item(iid, text="   %s%s" % ("✓ " if self._solved(pid) else "•  ", p["title"]))
@@ -348,8 +389,9 @@ class Lab(tk.Tk):
                     self.tree.item(iid, text="    %s%s" % ("✓ " if done else "•  ", L["title"]))
 
     def _select_default(self):
-        self.tree.selection_set("daily")
-        self.tree.focus("daily")
+        first = "daily" if self.tree.exists("daily") else "dailyai"
+        self.tree.selection_set(first)
+        self.tree.focus(first)
         self.on_select()
 
     # -------- selection & rendering --------
@@ -396,6 +438,11 @@ class Lab(tk.Tk):
         render(self.lesson_txt)
         self.lesson_txt.configure(state="disabled")
 
+    def _set_test_btn(self, **kw):
+        # theory app has no Run Tests button — quietly ignore the code-mode calls.
+        if self.test_btn is not None:
+            self.test_btn.configure(**kw)
+
     def _render_leet(self, p, daily=False):
         self.test_btn.configure(text="✓ Run Tests", state="normal")
         self.done_btn.configure(text="✓ Solved" if self._solved(p["id"]) else "Solved?", state="disabled")
@@ -423,7 +470,7 @@ class Lab(tk.Tk):
         course = self.courses[tid]
         L = course["lessons"][idx]
         ex = L.get("exercise")
-        self.test_btn.configure(text="✓ Run Tests" if ex else "✓ AI Check", state="normal")
+        self._set_test_btn(text="✓ Run Tests" if ex else "✓ AI Check", state="normal")
         self.done_btn.configure(text="✓ Done" if self._lesson_done(L["id"]) else "Mark done", state="normal")
 
         def draw(w):
@@ -474,7 +521,10 @@ class Lab(tk.Tk):
                 if do.get("task"):
                     w.insert("end", "\n🛠  DO THIS (hands-on)\n", "h")
                     w.insert("end", do["task"] + "\n", "task")
-                    w.insert("end", "Do it in your terminal; use the editor to experiment (▶ Run), then ✓ AI Check.\n", "dim")
+                    if self.mode == "code":
+                        w.insert("end", "Do it in your terminal; use the editor to experiment (▶ Run), then ✓ AI Check.\n", "dim")
+                    else:
+                        w.insert("end", "Do it for real, then write what you did / what you found in the Workbench and press ✓ AI Check.\n", "dim")
             if L.get("quiz"):
                 lid = L["id"]
                 base = lid.replace("-", "_")
@@ -507,6 +557,21 @@ class Lab(tk.Tk):
                 celtag = "cel_%s" % base
                 w.insert("end", "\n🎉  All checks passed — you've PROVEN this one. Hit “Finish lesson”. \n", (celtag,))
                 w.tag_configure(celtag, foreground=C["gold"], font=UIB, elide=not allpassed)
+            # Explain-back: an open question the AI grades. Deeper than a multiple choice —
+            # you must produce the reasoning, not recognize it. Answer in the Workbench/editor.
+            eq = EXPLAIN_QUESTIONS.get("%s:%d" % (tid, idx))
+            if eq and (not eq.get("title_check") or eq["title_check"] == L["title"]):
+                self._explain_q = eq  # act_grade reads this
+                prevg = (self.state.get("explainScores") or {}).get(L["id"])
+                w.insert("end", "\n🧠  EXPLAIN IT — graded by AI\n", "h")
+                w.insert("end", eq["q"] + "\n", "task")
+                where = "the editor" if self.mode == "code" else "the Workbench (left)"
+                w.insert("end", "Write your answer in %s, then press %s.%s\n" % (
+                    where,
+                    "“📝 Grade my answer”" if self.mode == "theory" else "the ✓ AI Check button",
+                    (" Best so far: %d/100." % prevg["score"]) if prevg else ""), "dim")
+            else:
+                self._explain_q = None
         self._set_lesson(draw)
         if L.get("quiz"):
             self._update_check_status()
@@ -516,7 +581,10 @@ class Lab(tk.Tk):
             "asm": ("asm", "; Intel syntax (nasm). Link with gcc: declare a global main and you can use printf.\n"
                            "global main\nextern printf\n\nsection .text\nmain:\n    ; experiment here — press ▶ Run\n    ret\n"),
         }
-        if ex:
+        if self.mode == "theory":
+            # the Workbench is a plain writing pad — seed it with the answer scaffold.
+            self._load_editor("# Write your answer / notes here, then Grade my answer.\n\n", "text")
+        elif ex:
             self._load_editor(ex["starter"], "python")
         elif tid in starters:
             lang, starter = starters[tid]
@@ -601,7 +669,7 @@ class Lab(tk.Tk):
     def _render_capstone(self, tid):
         course = self.courses[tid]
         cap = course["capstone"]
-        self.test_btn.configure(state="disabled")
+        self._set_test_btn(state="disabled")
         self.done_btn.configure(text="Mark done", state="disabled")
 
         def draw(w):
@@ -634,8 +702,9 @@ class Lab(tk.Tk):
 
     def _set_busy(self, on):
         self._busy = on
-        for b in (self.run_btn, self.test_btn):
-            b.configure(state="disabled" if on else "normal")
+        for b in (self.run_btn, self.test_btn, getattr(self, "grade_btn", None)):
+            if b is not None:
+                b.configure(state="disabled" if on else "normal")
 
     def act_run(self):
         if self._busy:
@@ -671,8 +740,11 @@ class Lab(tk.Tk):
             return
         ex = self._current_exercise()
         if ex is None:
-            # prose lesson → AI review
-            self.act_review()
+            # prose lesson → grade the explain-back if it has one, else the doThis review.
+            if getattr(self, "_explain_q", None):
+                self.act_grade()
+            else:
+                self.act_review()
             return
         code = self.editor.get_code()
         self._save_code()
@@ -692,6 +764,78 @@ class Lab(tk.Tk):
         if c["kind"] == "lesson":
             return self.courses[c["tid"]]["lessons"][c["idx"]].get("exercise")
         return None
+
+    # -------- AI-graded explain-back --------
+    def act_grade(self):
+        """Grade the Workbench/editor answer to the current lesson's explain question."""
+        c = self.current
+        eq = getattr(self, "_explain_q", None)
+        if self._busy or not c or c.get("kind") != "lesson" or not eq:
+            return
+        key = self.state.get("apiKey", "")
+        answer = self.editor.get_code().strip()
+        # ignore the seed scaffold / trivially short answers
+        clean = "\n".join(l for l in answer.splitlines() if not l.strip().startswith("#")).strip()
+        out = self.out_txt
+        self._to_tab(0)
+        if len(key) < 20:
+            self._print(out, "Add a free Gemini key in ⚙ Settings to get graded.\n", "err", clear=True)
+            return
+        if len(clean) < 25:
+            self._print(out, "Write a real answer first (a few sentences), then grade it.\n", "warn", clear=True)
+            return
+        lid = self.courses[c["tid"]]["lessons"][c["idx"]]["id"]
+        self._print(out, "Grading your explanation…\n", "dim", clear=True)
+        self._set_busy(True)
+        user = ("QUESTION: %s\n\nRUBRIC (what a full answer must contain): %s\n\n"
+                "STUDENT'S ANSWER:\n%s\n\nGrade it per the schema.") % (eq["q"], eq["rubric"], clean)
+
+        def work():
+            try:
+                data = self._json_call(key, prompts.EXPLAIN_GRADER_SYS, user, self._valid_grade)
+                self.after(0, lambda: self._grade_done(lid, data))
+            except Exception as e:
+                self.after(0, lambda e=e: (self._set_busy(False), self._print(out, "⚠ " + str(e) + "\n", "err", clear=True)))
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _valid_grade(o):
+        if not isinstance(o, dict):
+            return "reply is not an object"
+        if not isinstance(o.get("score"), int) or not 0 <= o["score"] <= 100:
+            return "score must be an integer 0-100"
+        if o.get("verdict") not in ("pass", "revise"):
+            return "verdict must be pass or revise"
+        for k in ("strengths", "gaps", "model"):
+            if not isinstance(o.get(k), str) or len(o[k]) < 3:
+                return "%s must be a non-empty string" % k
+        return None
+
+    def _grade_done(self, lid, g):
+        self._set_busy(False)
+        out = self.out_txt
+        self._print(out, "", clear=True)
+        passed = g["verdict"] == "pass"
+        self._print(out, "Score: %d/100 — %s\n\n" % (g["score"], "PASS ✓" if passed else "revise"),
+                    "ok" if passed else "warn")
+        self._print(out, "What you got right\n", "acc")
+        self._print(out, g["strengths"] + "\n\n")
+        self._print(out, "Gaps to close\n", "acc")
+        self._print(out, g["gaps"] + "\n\n")
+        self._print(out, "Model answer\n", "acc")
+        self._print(out, g["model"] + "\n", "dim")
+        # record best score; award XP the first time a lesson is passed (experience gained)
+        scores = self.state.setdefault("explainScores", {})
+        prev = scores.get(lid, {}).get("score", -1)
+        first_pass = passed and not scores.get(lid, {}).get("passed")
+        if g["score"] > prev or passed:
+            scores[lid] = {"score": max(prev, g["score"]), "passed": passed or scores.get(lid, {}).get("passed", False)}
+        if first_pass:
+            self.add_xp(15)
+            self._mark_active()
+            self._print(out, "\n+15 XP — explanation accepted.\n", "ok")
+        self._save_state()
+        self._refresh_marks()
 
     def _show_tests(self, r, ex):
         self._set_busy(False)
@@ -845,15 +989,53 @@ class Lab(tk.Tk):
                  echo="[asked to be walked through the next step]")
 
     def act_explain_problem(self):
+        # Renders the clarification INLINE in the problem pane, right under the statement —
+        # not in the little tutor box — so the fuller explanation is impossible to miss.
         c = self.current
         if not c or c["kind"] != "leet":
-            self._tutor("Tutor", "Open a LeetCode problem first.", "dim")
             return
+        if self._busy:
+            return
+        key = self.state.get("apiKey", "")
+        w = self.lesson_txt
+        w.configure(state="normal")
+        # drop any previous explanation, then open a fresh inline block at the end
+        prev = w.search("PROBLEM, EXPLAINED", "1.0", "end")
+        if prev:
+            w.delete(prev + " linestart", "end")
+        w.insert("end", "\n──────────  PROBLEM, EXPLAINED  ──────────\n", "h")
+        if len(key) < 20:
+            w.insert("end", "Add a free Gemini key in ⚙ Settings to explain the problem.\n", "err")
+            w.configure(state="disabled")
+            return
+        w.insert("end", "Clarifying the problem…\n", ("dim", "explain_pending"))
+        w.see("end")
+        w.configure(state="disabled")
+        self._set_busy(True)
         p = c["problem"]
+        sysp = prompts.system_for("problem_explainer")
         user = ("Problem: %s [%s]\n\nStatement:\n%s\n\nExamples:\n%s\n\n"
                 "Explain this problem fully per your rules — clarify only, never solve.") % (
             p["title"], p["difficulty"], p["statement"], "\n".join(p["examples"]))
-        self._ai("problem_explainer", user, echo="[asked for a full explanation of the problem — no spoilers]")
+
+        def work():
+            try:
+                out = gemini(key, sysp, user)
+            except Exception as e:
+                out = "⚠ " + str(e)
+            self.after(0, lambda: self._explain_done(out))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _explain_done(self, out):
+        self._set_busy(False)
+        w = self.lesson_txt
+        w.configure(state="normal")
+        idx = w.search("Clarifying the problem…", "1.0", "end")
+        if idx:
+            w.delete(idx + " linestart", idx + " lineend +1c")
+        w.insert(idx or "end", out + "\n", "b")
+        w.see(idx or "end")
+        w.configure(state="disabled")
 
     # ---- structured (JSON) generation: practice quizzes & the daily AI lesson ----
 
@@ -1003,11 +1185,10 @@ class Lab(tk.Tk):
 
     # ---- the daily AI lesson (the track LockIn has in store today) ----
 
-    TRACK_ORDER = ["python", "csharp", "c", "asm", "linux", "cyber_high", "cyber_low", "cmd", "git", "dsa"]
-
     def _todays_track(self):
-        """Replicates LockIn's productive-day rotation: program days since Jul 14 minus
-        off-days spent before today (read from the relayed app_state.json), mod tracks."""
+        """Rotates through THIS app's tracks by productive day (program days since Jul 14
+        minus off-days spent before today, read from the relayed app_state.json)."""
+        order = CODE_TRACKS if self.mode == "code" else THEORY_TRACKS
         start = datetime.date(2026, 7, 14)
         today = datetime.date.today()
         cal = max(0, (today - start).days)
@@ -1021,15 +1202,12 @@ class Lab(tk.Tk):
                     off += 1
         except Exception:
             pass
-        tid = self.TRACK_ORDER[max(0, cal - off) % len(self.TRACK_ORDER)]
-        if tid in self.courses:
-            name = self.courses[tid]["title"].split("—")[0].strip()
-        else:
-            name = {"git": "Git"}.get(tid, tid)
+        tid = order[max(0, cal - off) % len(order)]
+        name = self.courses[tid]["title"].split("—")[0].strip() if tid in self.courses else tid
         return tid, name
 
     def _render_dailyai(self):
-        self.test_btn.configure(state="disabled")
+        self._set_test_btn(state="disabled")
         self.done_btn.configure(state="disabled")
         tid, tname = self._todays_track()
         today = datetime.date.today().isoformat()
@@ -1275,4 +1453,6 @@ class Lab(tk.Tk):
 
 
 if __name__ == "__main__":
-    Lab().mainloop()
+    # `python lockin_lab.py [code|theory|study]` — default is the code IDE.
+    _mode = "theory" if (len(sys.argv) > 1 and sys.argv[1] in ("theory", "study")) else "code"
+    Lab(mode=_mode).mainloop()

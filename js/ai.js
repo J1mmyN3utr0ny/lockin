@@ -55,13 +55,17 @@ export async function gemini({ system, messages, temperature = 0.7, tier = "smar
 
   for (let ci = start; ci < chain.length; ci++) {
     const mdl = chain[ci];
+    // Thinking control differs per generation (ai.google.dev/gemini-api/docs/thinking):
+    // 2.5 takes thinkingBudget (0 = off); 3.x takes thinkingLevel ("minimal" = lightest).
+    // Left unmanaged, a 3.x model thinks its whole token budget away and returns an
+    // EMPTY reply — that was the "lesson generation stuck at stage 2" bug.
+    const thinking = mdl.startsWith("gemini-2.5") ? { thinkingBudget: 0 }
+      : mdl.startsWith("gemini-3") ? { thinkingLevel: "minimal" } : null;
     const body = {
       contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] })),
-      // 2.5 models think by default: disable it so tokens go to the answer, not silent
-      // reasoning. (other generations reject thinkingConfig, so only send it where supported.)
       generationConfig: {
-        temperature, maxOutputTokens: 2048,
-        ...(mdl.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {})
+        temperature, maxOutputTokens: 4096,
+        ...(thinking ? { thinkingConfig: thinking } : {})
       }
     };
     if (system) body.system_instruction = { parts: [{ text: system }] };
@@ -69,11 +73,17 @@ export async function gemini({ system, messages, temperature = 0.7, tier = "smar
     for (let kt = 0; kt < keys.length; kt++) {
       const key = keys[(keyIx + kt) % keys.length];
       let res;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000); // a stalled request must never hang a pipeline
       try {
         res = await fetch(ENDPOINT(key, mdl), {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body), signal: ctrl.signal
         });
-      } catch (e) { throw new Error("Network error — are you online? (The AI needs internet; the rest of the app doesn't.)"); }
+      } catch (e) {
+        if (e.name === "AbortError") { lastErr = new Error(`${mdl} timed out — trying the next option.`); continue; }
+        throw new Error("Network error — are you online? (The AI needs internet; the rest of the app doesn't.)");
+      } finally { clearTimeout(timer); }
 
       // 429 → the active key is out of quota: rotate to the backup and retry in place.
       if (res.status === 429) {
@@ -91,8 +101,12 @@ export async function gemini({ system, messages, temperature = 0.7, tier = "smar
 
       const data = await res.json();
       const cand = data.candidates && data.candidates[0];
-      const text = cand && cand.content && cand.content.parts && cand.content.parts.map((p) => p.text).join("");
-      if (!text) throw new Error("The AI returned nothing — try rephrasing.");
+      const text = cand && cand.content && cand.content.parts && cand.content.parts.map((p) => p.text || "").join("");
+      if (!text) {
+        // empty reply (e.g. the model thought its budget away) — a MODEL problem, walk the chain
+        lastErr = new Error(`${mdl} returned an empty reply — trying the next model.`);
+        break;
+      }
       picked[tier] = mdl;
       keyIx = (keyIx + kt) % keys.length; // remember which key still has quota
       return text.trim();

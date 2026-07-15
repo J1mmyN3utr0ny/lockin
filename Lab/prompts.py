@@ -160,6 +160,16 @@ DAILY_QUIZ_SYS = JSON_RULES + (
     "answerable from the lesson text alone, varied correct indices."
 )
 
+EXPLAIN_GRADER_SYS = JSON_RULES + (
+    " Task: grade a student's free-text explanation against a rubric. Be fair but rigorous — reward "
+    "correct understanding in his own words, don't require exact phrasing, and dock clearly wrong or "
+    "missing points. Schema: {\"score\": integer 0-100, \"verdict\": \"pass\"|\"revise\", "
+    "\"strengths\": string (what he got right, 1-2 sentences), \"gaps\": string (what's wrong or "
+    "missing and how to fix it, 1-3 sentences), \"model\": string (a concise correct answer, 2-4 "
+    "sentences, so he can compare)}. verdict is \"pass\" only when score >= 70 AND no major "
+    "misconception is present."
+)
+
 
 def system_for(mode: str, context: str = "") -> str:
     mode_block = {
