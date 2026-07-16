@@ -305,8 +305,8 @@ function aiPlanDay(dateKey) {
         const raw = await gemini({
           tier: "fast",
           system: "You manage an 18-year-old student's daily schedule inside LockIn. Protect sleep (~8h) and the " +
-            "protected free time; the gym is best ~20:00. PET context: the exam is Sep 2-3 and practice volume should " +
-            "GROW as it approaches — cut PET blocks last; also note the PET course is moving to Monday+Thursday soon. " +
+            "protected free time; the gym is best ~20:00. PET context: the course runs Monday & Thursday 09:00-14:00 " +
+            "(a hard anchor), the exam is Sep 2-3, and practice volume should GROW as it approaches — cut PET blocks last. " +
             "Reply with ONLY valid JSON matching the requested schema.",
           messages: [{ role: "user", text: prompt }], temperature: 0.2
         });

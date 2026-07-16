@@ -79,7 +79,7 @@ const PORTFOLIO_SUB = "One stage of your résumé ladder (Learn → Portfolio). 
 function petAfternoon(dateKey) {
   if (petLive(dateKey)) {
     return [
-      { id: "pethw", time: "14:30", cat: "pet", title: "PET course homework", sub: "A full hour on whatever's still open from Sunday/Wednesday's class. Understand each step — it's direct exam practice." },
+      { id: "pethw", time: "14:30", cat: "pet", title: "PET course homework", sub: "A full hour on whatever's still open from Monday/Thursday's class. Understand each step — it's direct exam practice." },
       { id: "petsite", time: "15:30", cat: "pet", title: "PET practice — course website", sub: "Timed drill sets on the course's site (Hebrew first). Their material mirrors the real exam." },
       { id: "portfolio", time: "16:30", cat: "cs", title: "Portfolio project — build & ship", sub: PORTFOLIO_SUB, link: "#learn/projects" }
     ];
@@ -124,7 +124,7 @@ function courseDay(dateKey, dow) {
   return [
     { id: "wake", time: "07:00", cat: "sleep", title: "Wake · water · quick breakfast", sub: "Course day — up a little earlier to make the 9:00 start.", link: L.sleep, fixed: true },
     { id: "commute", time: "08:15", cat: "travel", title: "Head to PET course", sub: `About ${TRAVEL.course} min — bring water + a snack.`, fixed: true, hard: true, group: "course" },
-    { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Sundays & Wednesdays. This is your main PET engine.", link: L.pet, fixed: true, hard: true, group: "course" },
+    { id: "course", time: "09:00", cat: "pet", title: "PET course (09:00–14:00)", sub: "Mondays & Thursdays. This is your main PET engine.", link: L.pet, fixed: true, hard: true, group: "course" },
     { id: "lunch", time: "14:00", cat: "food", title: "Lunch + decompress", sub: "Refuel right after class.", link: L.food, fixed: true, hard: true, group: "course" },
     { ...travelBlock("homecourse", "14:40", TRAVEL.course, "Head home", "drive", "course"), hard: true },
     { id: "leet", time: "15:30", cat: "leet", title: "LeetCode — daily (quick)", sub: "One problem in LockIn Lab. Unlocks your phone when solved.", link: L.cyber },
@@ -156,7 +156,7 @@ function fridayDay(dateKey, dow) {
     { id: "free1", time: "14:15", cat: "free", free: true, title: "FREE — friends / rest", sub: "You reviewed the week. Enjoy it." },
     { id: "dinner", time: "19:00", cat: "food", title: "Family dinner — EAT BIG", sub: "Your best-eating day. Seconds encouraged — this fuels growth.", link: L.food, fixed: true, hard: true },
     { id: "free2", time: "20:30", cat: "free", free: true, title: "FREE evening", sub: "" },
-    { id: "sleep", time: "00:00", cat: "sleep", title: "Sleep (a bit later is OK)", sub: "Don't drift too far — Sunday is a course day.", link: L.sleep, fixed: true }
+    { id: "sleep", time: "00:00", cat: "sleep", title: "Sleep (a bit later is OK)", sub: "Don't drift too far — Monday's course comes fast.", link: L.sleep, fixed: true }
   ];
 }
 
@@ -165,7 +165,7 @@ function shabbatDay(dateKey) {
     { id: "rest", time: "—", cat: "free", free: true, title: "REST DAY — Shabbat", sub: "The built-in light day. No goals required. This does NOT cost an off-day token.", fixed: true },
     { id: "flash", time: "11:00", cat: "cyber", title: "Optional: 10-min flashcards", sub: "Only if you feel like it.", link: L.cyber, fixed: true },
     { id: "dinner", time: "19:00", cat: "food", title: "Dinner — hit your protein", sub: "Recovery still needs food.", link: L.food, fixed: true },
-    { id: "sleep", time: "23:30", cat: "sleep", title: "Protect sleep — Sunday is a course day", sub: "Back on the 07:00 wake tomorrow.", link: L.sleep, fixed: true }
+    { id: "sleep", time: "23:30", cat: "sleep", title: "Protect sleep — Monday is a course day", sub: "Back on the 07:30 wake tomorrow; 07:00 on Monday.", link: L.sleep, fixed: true }
   ];
 }
 

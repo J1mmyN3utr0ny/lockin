@@ -179,13 +179,21 @@ export function prettyDate(dateKey) {
 export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // Day template type for a given date.
+// The PET course MOVED: it ran Sun & Wed through Jul 15, and runs Mon & Thu from Jul 17
+// on (Thu Jul 16 is explicitly excluded — the course skips it during the switch). The
+// old rule stays in place for past dates so history renders as it actually happened.
+const COURSE_MOVE = "2026-07-15"; // last day of the Sun/Wed era
+const COURSE_SKIP = "2026-07-16"; // the one Thursday the new era does NOT include
+
 export function dayType(dateKey) {
   const d = dow(dateKey);
-  // The PET course runs Sun & Wed from COURSE_START until the exam; after that those days free up.
-  const courseLive = daysBetween(COURSE_START, dateKey) >= 0 && daysBetween(dateKey, EXAM_DATE) >= 0;
   if (d === 6) return "shabbat";
   if (d === 5) return "friday";
-  if ((d === 0 || d === 3) && courseLive) return "course";
+  const courseLive = daysBetween(COURSE_START, dateKey) >= 0 && daysBetween(dateKey, EXAM_DATE) >= 0;
+  if (courseLive && dateKey !== COURSE_SKIP) {
+    const oldEra = daysBetween(dateKey, COURSE_MOVE) >= 0; // dateKey <= Jul 15
+    if (oldEra ? (d === 0 || d === 3) : (d === 1 || d === 4)) return "course";
+  }
   return "deepwork";
 }
 

@@ -31,14 +31,17 @@ def _broadcast(event, data):
 
 def _wake_for(d):
     """Mirrors the web app's schedule: Saturday rests (no alarm), Friday wakes 08:30,
-    course days (Sun & Wed until the Sep-3 exam) 07:00, every other day 07:30."""
+    course days 07:00 (Sun & Wed through Jul 15; Mon & Thu from Jul 17 — Thu Jul 16 is
+    skipped — until the Sep-3 exam), every other day 07:30."""
     wd = d.weekday()  # Mon=0 .. Sun=6
     if wd == 5:
         return None
     if wd == 4:
         return "08:30"
-    if wd in (6, 2) and d <= datetime.date(2026, 9, 3):
-        return "07:00"
+    if d <= datetime.date(2026, 9, 3) and d != datetime.date(2026, 7, 16):
+        course = wd in (6, 2) if d <= datetime.date(2026, 7, 15) else wd in (0, 3)
+        if course:
+            return "07:00"
     return "07:30"
 
 
