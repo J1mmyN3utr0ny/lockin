@@ -1,5 +1,5 @@
 /* LockIn service worker — offline-first precache of the app shell. */
-const VERSION = "lockin-v31";
+const VERSION = "lockin-v32";
 const ASSETS = [
   "./",
   "./index.html",
@@ -49,6 +49,13 @@ const ASSETS = [
   "./js/data/lessons_content.js",
   "./js/data/lesson_topics.js"
 ];
+
+/* The app asks the running SW which version it actually is (⚙ Settings shows it). VERSION
+   is the single source of truth — it's already bumped on every asset change — so the number
+   on screen is the code REALLY running, not a constant that could itself be served stale. */
+self.addEventListener("message", (e) => {
+  if (e.data === "version" && e.ports && e.ports[0]) e.ports[0].postMessage(VERSION);
+});
 
 self.addEventListener("install", (e) => {
   e.waitUntil(

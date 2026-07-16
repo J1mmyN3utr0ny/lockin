@@ -88,6 +88,38 @@ function route(opts = {}) {
   window.scrollTo(0, y);
 }
 
+// ---- app version -------------------------------------------------------------
+// Asked of the RUNNING service worker (its VERSION const is bumped on every asset
+// change, so it names the code actually executing). Falls back to the live cache
+// name when no SW controls the page yet — e.g. the very first load after install.
+function swVersion(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!sw) return resolve(null);
+    const ch = new MessageChannel();
+    const timer = setTimeout(() => resolve(null), timeoutMs); // an old SW won't answer
+    ch.port1.onmessage = (e) => { clearTimeout(timer); resolve(e.data); };
+    try { sw.postMessage("version", [ch.port2]); } catch (_e) { clearTimeout(timer); resolve(null); }
+  });
+}
+
+async function appVersion() {
+  const v = await swVersion();
+  if (v) return v;
+  try {
+    const keys = await caches.keys();
+    const hit = keys.find((k) => k.startsWith("lockin-v"));
+    if (hit) return hit;
+  } catch (_e) {}
+  return null;
+}
+
+// Pretty label: "lockin-v31" -> "v31". Anything unexpected shows as-is.
+function versionLabel(v) {
+  if (!v) return "not installed yet — running live from the server (dev)";
+  return /^lockin-(v\d+)$/.test(v) ? v.replace("lockin-", "") : v;
+}
+
 function openSettings() {
   const s = S.getState();
   const m = openModal(`
@@ -137,6 +169,15 @@ function openSettings() {
     <div class="row" style="gap:10px">
       <button class="btn" id="set-install" style="flex:1">Install help</button>
       <button class="btn bad" id="set-reset" style="flex:1">Reset all data</button>
+    </div>
+
+    <hr class="hr" />
+    <div class="row between">
+      <div>
+        <div class="small"><b>App version</b></div>
+        <div class="small dim" id="set-ver">checking…</div>
+      </div>
+      <button class="btn sm ghost" id="set-ver-check">Check for updates</button>
     </div>
     <div class="row" style="margin-top:14px">
       <button class="btn primary block" data-close style="flex:1">Done</button>
@@ -194,6 +235,29 @@ function openSettings() {
       status.innerHTML = `<span style="color:var(--good)">✓ Synced — ${st.lessonsDone}/${st.lessonsTotal} lessons, ${st.solvedCount} solved, today's LeetCode: ${esc(st.leetToday.title)}${st.leetToday.solved ? " ✓" : ""}.</span>`;
     } catch (e) {
       status.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`;
+    }
+  });
+  const verEl = m.querySelector("#set-ver");
+  appVersion().then((v) => { if (verEl.isConnected) verEl.textContent = versionLabel(v); });
+  m.querySelector("#set-ver-check").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    verEl.textContent = "checking for a newer version…";
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) throw new Error("no service worker");
+      await reg.update();
+      // A waiting worker = a new version is installed and takes over on the next
+      // load; app.js's controllerchange handler reloads us automatically.
+      if (reg.waiting || reg.installing) {
+        verEl.textContent = "update found — installing, the app will reload itself";
+      } else {
+        verEl.textContent = `${versionLabel(await appVersion())} — up to date`;
+      }
+    } catch (_err) {
+      verEl.textContent = `${versionLabel(await appVersion())} — couldn't check (offline?)`;
+    } finally {
+      if (btn.isConnected) btn.disabled = false;
     }
   });
   m.querySelector("#set-install").addEventListener("click", installHelp);
