@@ -21,7 +21,7 @@ const ENDPOINT = (key, model) =>
 
 export function getKey() { return (S.getState().settings.geminiKey || "").trim(); }
 export function hasKey() { return getKey().length > 20; }
-export function setKey(k) { S.update((st) => { st.settings.geminiKey = (k || "").trim(); }); }
+export function setKey(k) { S.updateLocal((st) => { st.settings.geminiKey = (k || "").trim(); }); } // device-only — no sync-clock bump
 
 // Backup key: a second free-tier key that takes over the moment the primary gets
 // rate-limited (429), doubling the effective quota. Session remembers which key works.
@@ -156,7 +156,7 @@ export function mdLite(t) {
 function keyGateHTML() {
   return `
     <h2>Connect the AI tutor 🤖</h2>
-    <p class="muted small">The hands-on tutor uses <b>Gemini 2.5 Flash</b> — Google's free tier. Add a key once:</p>
+    <p class="muted small">The hands-on tutor uses <b>Gemini 3.5 Flash</b> — Google's free tier. Add a key once:</p>
     <ol class="list-plain small" style="padding-left:18px">
       <li>Go to <span class="kbd">aistudio.google.com/apikey</span> (sign in with any Google account).</li>
       <li>Click <b>Create API key</b> → copy it.</li>

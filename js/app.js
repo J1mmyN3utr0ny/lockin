@@ -159,7 +159,8 @@ function openSettings() {
   m.querySelector("#set-date-clear").addEventListener("click", () => {
     S.update((st) => { st.settings.debugDate = null; }); closeModal(); route();
   });
-  const saveKeys = () => S.update((st) => {
+  // Keys are device-only config — save WITHOUT bumping the sync clock (see boot()).
+  const saveKeys = () => S.updateLocal((st) => {
     st.settings.geminiKey = $("#set-ai").value.trim();
     st.settings.geminiKey2 = $("#set-ai2").value.trim();
   });
@@ -180,11 +181,11 @@ function openSettings() {
     }
   });
   m.querySelector("#set-lab-save").addEventListener("click", () => {
-    S.update((st) => { st.settings.labUrl = $("#set-lab").value.trim(); });
+    S.updateLocal((st) => { st.settings.labUrl = $("#set-lab").value.trim(); });
     toast("Lab address saved");
   });
   m.querySelector("#set-lab-sync").addEventListener("click", async () => {
-    S.update((st) => { st.settings.labUrl = $("#set-lab").value.trim(); });
+    S.updateLocal((st) => { st.settings.labUrl = $("#set-lab").value.trim(); });
     const status = $("#set-lab-status");
     if (!Lab.labConfigured()) { status.innerHTML = `<span style="color:var(--warn)">Enter the Lab address first.</span>`; return; }
     status.innerHTML = `<span class="dim">Syncing…</span>`;

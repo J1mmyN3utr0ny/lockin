@@ -123,6 +123,14 @@ export function update(mutator) {
   save();
   emit();
 }
+// Like update(), but for DEVICE-ONLY fields (labUrl, geminiKey/geminiKey2): saves and
+// re-renders WITHOUT bumping updatedAt, so per-device config never makes this device
+// "newest" in last-write-wins sync and pushes its state over the other device's data.
+export function updateLocal(mutator) {
+  mutator(state);
+  save();
+  emit();
+}
 // Adopt a state blob pulled from the Lab sync hub. Keeps THIS device's connection settings and Lab
 // snapshot (labUrl / geminiKey are per-device), and does not bump updatedAt — we take the remote's.
 export function applyRemote(remote) {
@@ -182,7 +190,7 @@ export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"
 // The PET course MOVED: it ran Sun & Wed through Jul 15, and runs Mon & Thu from Jul 17
 // on (Thu Jul 16 is explicitly excluded — the course skips it during the switch). The
 // old rule stays in place for past dates so history renders as it actually happened.
-const COURSE_MOVE = "2026-07-15"; // last day of the Sun/Wed era
+export const COURSE_MOVE = "2026-07-15"; // last day of the Sun/Wed era
 const COURSE_SKIP = "2026-07-16"; // the one Thursday the new era does NOT include
 
 export function dayType(dateKey) {

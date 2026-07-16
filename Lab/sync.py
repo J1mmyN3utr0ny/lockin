@@ -38,7 +38,7 @@ def _wake_for(d):
         return None
     if wd == 4:
         return "08:30"
-    if d <= datetime.date(2026, 9, 3) and d != datetime.date(2026, 7, 16):
+    if datetime.date(2026, 7, 14) <= d <= datetime.date(2026, 9, 3) and d != datetime.date(2026, 7, 16):
         course = wd in (6, 2) if d <= datetime.date(2026, 7, 15) else wd in (0, 3)
         if course:
             return "07:00"
