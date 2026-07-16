@@ -276,7 +276,23 @@ function boot() {
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+      // Auto-update: check for a new SW version on load, on refocus and every 30 min, and
+      // reload ONCE when the new version takes over — no more "reload twice" ritual, and
+      // the desktop can't sit on a stale version for days anymore.
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register("./service-worker.js").then((reg) => {
+        setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) reg.update().catch(() => {});
+        });
+      }).catch(() => {});
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        // skip the very first install (no previous controller) — nothing stale to replace
+        if (!hadController || reloaded) return;
+        reloaded = true;
+        location.reload();
+      });
     });
   }
 }

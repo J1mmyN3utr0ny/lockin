@@ -6,7 +6,7 @@
 // the whole day around your constraints.
 import * as S from "../state.js";
 import { esc, barHTML, refresh, toast, confetti, buzz, openModal, closeModal } from "../ui.js";
-import { buildDay, taskBlockIds, unitize, placeUnit, applyAiPlan, resetDayOrder, hasCustomOrder } from "../schedule.js";
+import { buildDay, taskBlockIds, unitize, placeUnit, applyAiPlan, resetDayOrder, hasCustomOrder, debtSummary } from "../schedule.js";
 import { gemini, hasKey, mdLite, extractJSON } from "../ai.js";
 import { openOffDayFlow, isOffDay } from "./offday.js";
 import { startFocus } from "../focus.js";
@@ -291,9 +291,12 @@ function aiPlanDay(dateKey) {
     const tomorrow = S.addDays(dateKey, 1);
     const dToday = dayPromptLines(dateKey);
     const dTmrw = dayPromptLines(tomorrow);
+    const debts = debtSummary();
     let prompt =
       `TODAY ${dateKey}:\n${dToday.lines}\n(movable ids: ${dToday.movable.join(", ")})\n\n` +
       `TOMORROW ${tomorrow}:\n${dTmrw.lines}\n(movable ids: ${dTmrw.movable.join(", ")})\n\n` +
+      (debts.length ? `CATCH-UP DEBT (study blocks missed in the last 7 days): ${debts.join(", ")}. ` +
+        `When re-planning, protect these categories and skip them only as a last resort — cyber debt first.\n\n` : "") +
       `The user says: "${constraints}"\n\n` +
       `Per day you may: reorder movable units between their anchors; "skip" movable units that shouldn't happen; ` +
       `"shift" the WHOLE day by minutes (-120..180) — wake, wind-down and sleep move with it, HARD anchors don't ` +
@@ -457,6 +460,15 @@ export default {
     const s = S.getState();
     const hi = s.profile.name ? `, ${esc(s.profile.name)}` : "";
 
+    // Catch-up: missed study blocks from the last 7 days turn into today's focus.
+    const debts = debtSummary();
+    const catchUpBanner = debts.length ? `
+      <div class="card tight" style="border-color:rgba(52,211,153,.45); background:linear-gradient(180deg,rgba(52,211,153,.10),var(--card))">
+        <b>⚡ Catch-up mode</b>
+        <div class="small muted" style="margin-top:2px">Missed this week: <b>${esc(debts.join(" · "))}</b>.
+        The matching blocks below are boosted — clear the ${debts[0].startsWith("cyber") ? "cyber" : esc(debts[0].split(" ")[0])} debt first. Ticking forgotten past days (📅 preview) clears debt too.</div>
+      </div>` : "";
+
     const resetBanner = day.taper.inReset ? `
       <div class="card tight" style="border-color:rgba(139,92,246,.4); background:linear-gradient(180deg,rgba(139,92,246,.12),var(--card))">
         <div class="row between">
@@ -503,6 +515,7 @@ export default {
         <button class="btn sm ghost" id="preview-day" style="flex:1">📅 Preview any day</button>
       </div>
       ${resetBanner}
+      ${catchUpBanner}
       ${anyMovable && hasCustomOrder(key) ? `
         <div class="row between" style="margin:0 2px 8px">
           <span class="small dim">✋ custom order — drag the ⣿ bars to keep adjusting</span>

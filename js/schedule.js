@@ -188,7 +188,65 @@ function canonicalBlocks(dateKey) {
 
 export function buildDay(dateKey) {
   const c = canonicalBlocks(dateKey);
-  return { type: c.type, label: c.label, taper: taperTargets(dateKey), blocks: applyDayOrder(dateKey, c.blocks) };
+  let blocks = applyDayOrder(dateKey, c.blocks);
+  // Catch-up only decorates today and future days; the debt itself is computed from
+  // PAST days built without decoration — so this can never recurse.
+  if (S.daysBetween(S.todayKey(), dateKey) >= 0) blocks = applyCatchUp(blocks);
+  return { type: c.type, label: c.label, taper: taperTargets(dateKey), blocks };
+}
+
+// ---- catch-up: unfinished blocks become the next days' focus -------------------
+// Debt = study blocks missed over the last 7 days. Off-days, Shabbat and days before
+// the program don't count, and a user-skipped unit (dayTweaks) isn't a miss. Cyber is
+// the priority track (GAMA prep), so it's always boosted and listed first.
+export const DEBT_CATS = ["cyber", "leet", "pet", "cs", "math"];
+let _debtCache = { key: "", debt: null };
+
+export function catchUpDebt() {
+  const st = S.getState();
+  const today = S.todayKey();
+  const key = today + ":" + (st.updatedAt || 0);
+  if (_debtCache.key === key) return _debtCache.debt;
+  const debt = { cyber: 0, leet: 0, pet: 0, cs: 0, math: 0 };
+  for (let i = 1; i <= 7; i++) {
+    const k = S.addDays(today, -i);
+    if (S.daysBetween(S.PROGRAM_START, k) < 0) break;
+    if (st.offDays.spent.includes(k) || S.dayType(k) === "shabbat") continue;
+    const rec = st.days[k];
+    const ticked = (rec && rec.blocks) || {};
+    // past days: canonical + the user's saved order/skips, WITHOUT catch-up decoration
+    for (const b of applyDayOrder(k, canonicalBlocks(k).blocks)) {
+      if (!b.free && DEBT_CATS.includes(b.cat) && !ticked[b.id]) {
+        debt[b.cat] = Math.min(4, debt[b.cat] + 1); // cap so one bad week can't demand the impossible
+      }
+    }
+  }
+  _debtCache = { key, debt };
+  return debt;
+}
+
+export function debtSummary() {
+  const debt = catchUpDebt();
+  return DEBT_CATS.filter((c) => debt[c] > 0).map((c) => `${c} ×${debt[c]}`);
+}
+
+const CATCHUP_NOTE = {
+  cyber: (n) => `⚡ CATCH-UP: ${n} missed cyber session${n > 1 ? "s" : ""} this week — add ${n > 1 ? "an extra Lab lesson AND its explain-back" : "one extra Lab lesson"} today. Cyber debt clears first.`,
+  leet: (n) => `⚡ CATCH-UP: ${n} missed problem${n > 1 ? "s" : ""} this week — solve one extra (or redo an old one from scratch).`,
+  pet: (n) => `⚡ CATCH-UP: ${n} missed PET block${n > 1 ? "s" : ""} this week — add one extra drill set. The exam doesn't move.`,
+  cs: (n) => `⚡ CATCH-UP: the project lost ${n} session${n > 1 ? "s" : ""} this week — push one milestone step further today.`,
+  math: (n) => `⚡ CATCH-UP: ${n} missed math block${n > 1 ? "s" : ""} — clear assignment work before it stacks up.`
+};
+
+function applyCatchUp(blocks) {
+  const debt = catchUpDebt();
+  if (!DEBT_CATS.some((c) => debt[c] > 0)) return blocks;
+  const boosted = new Set(); // decorate only the FIRST block of each indebted category
+  return blocks.map((b) => {
+    if (b.free || !debt[b.cat] || boosted.has(b.cat)) return b;
+    boosted.add(b.cat);
+    return { ...b, catchUp: true, sub: `${CATCHUP_NOTE[b.cat](debt[b.cat])} ${b.sub || ""}`.trim() };
+  });
 }
 
 // ---- movable units & per-day reordering -------------------------------------

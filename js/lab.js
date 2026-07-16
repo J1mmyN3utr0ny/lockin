@@ -80,13 +80,21 @@ export async function pushState() {
   return !!(res && res.ok);
 }
 
+// A remote adoption changes ticks/routine under the open view — repaint it, or the
+// desktop keeps SHOWING stale checkboxes even though the state already synced.
+function _adopt(remote) {
+  if (!S.applyRemote(remote)) return false;
+  window.dispatchEvent(new CustomEvent("lockin:refresh"));
+  return true;
+}
+
 export async function pullState() {
   const res = await labFetch("/appstate", {});
   if (!res || !res.ok) return false;
   let remote;
   try { remote = await res.json(); } catch (_e) { return false; }
   if (remote && remote.version !== undefined && (remote.updatedAt || 0) > (S.getState().updatedAt || 0)) {
-    return S.applyRemote(remote);
+    return _adopt(remote);
   }
   return false;
 }
@@ -163,11 +171,13 @@ function _onHubEvent(event, data) {
       const remote = JSON.parse(data);
       if (remote && remote.version !== undefined && (remote.updatedAt || 0) > (S.getState().updatedAt || 0)) {
         _lastPushed = remote.updatedAt || 0; // we now match the hub; don't echo it back
-        S.applyRemote(remote);
+        _adopt(remote);
       }
     } catch (_e) {}
   } else if (event === "gymmy") {
-    try { adoptGymmy(JSON.parse(data)); } catch (_e) {}
+    try {
+      if (adoptGymmy(JSON.parse(data))) window.dispatchEvent(new CustomEvent("lockin:refresh"));
+    } catch (_e) {}
   } else if (event === "labstatus") {
     try {
       const status = JSON.parse(data);
