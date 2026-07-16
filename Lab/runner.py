@@ -10,9 +10,43 @@ import tempfile
 PY = sys.executable or "python"
 TIMEOUT = 8  # seconds
 
+# Tool discovery: PATH first, then the usual Windows install spots — the Lab may have been
+# launched before PATH was updated (a fresh shell sees the new PATH; a running app doesn't),
+# and NASM's installer famously doesn't add itself to PATH at all.
+_TOOL_FALLBACKS = {
+    "gcc": [r"C:\msys64\ucrt64\bin\gcc.exe", r"C:\msys64\mingw64\bin\gcc.exe",
+            r"C:\MinGW\bin\gcc.exe", r"C:\TDM-GCC-64\bin\gcc.exe"],
+    "nasm": [r"C:\Program Files\NASM\nasm.exe", r"C:\Program Files (x86)\NASM\nasm.exe",
+             os.path.expandvars(r"%LOCALAPPDATA%\bin\NASM\nasm.exe")],
+}
+_tool_cache = {}
+
+
+def find_tool(name):
+    """Absolute path of a build tool, or None. Cached per run."""
+    if name not in _tool_cache:
+        p = shutil.which(name)
+        if not p:
+            for cand in _TOOL_FALLBACKS.get(name, []):
+                if os.path.isfile(cand):
+                    p = cand
+                    break
+        _tool_cache[name] = p
+    return _tool_cache[name]
+
+
+def _exe_env(tool_path):
+    """Env with the tool's bin dir on PATH — needed BOTH to run gcc itself (its cc1/ld helpers
+    load DLLs from that dir) and to run the exes it builds."""
+    if not tool_path:
+        return None
+    env = dict(os.environ)
+    env["PATH"] = os.path.dirname(tool_path) + os.pathsep + env.get("PATH", "")
+    return env
+
 
 def have_gcc():
-    return shutil.which("gcc") is not None
+    return find_tool("gcc") is not None
 
 
 def have_dotnet():
@@ -20,7 +54,7 @@ def have_dotnet():
 
 
 def have_nasm():
-    return shutil.which("nasm") is not None and shutil.which("gcc") is not None
+    return find_tool("nasm") is not None and find_tool("gcc") is not None
 
 
 def _run(cmd, cwd, timeout=TIMEOUT, stdin="", env=None):
@@ -53,13 +87,14 @@ def run_c(code, stdin=""):
                 "The lesson still works: build & run C in your own terminal.", "exit": -1, "timed_out": False}
     d = tempfile.mkdtemp(prefix="lockin_")
     try:
+        gcc = find_tool("gcc")
         src = os.path.join(d, "main.c")
         out = os.path.join(d, "a.exe" if os.name == "nt" else "a.out")
         open(src, "w", encoding="utf-8").write(code)
-        comp = _run(["gcc", src, "-o", out, "-std=c11", "-Wall"], d, timeout=20)
+        comp = _run([gcc, src, "-o", out, "-std=c11", "-Wall"], d, timeout=20, env=_exe_env(gcc))
         if comp["exit"] != 0:
             return {"stdout": "", "stderr": "compile error:\n" + comp["stderr"], "exit": comp["exit"], "timed_out": False}
-        res = _run([out], d, stdin=stdin)
+        res = _run([out], d, stdin=stdin, env=_exe_env(gcc))
         if comp["stderr"].strip():
             res["stderr"] = "warnings:\n" + comp["stderr"] + "\n" + res["stderr"]
         return res
@@ -104,23 +139,24 @@ def run_csharp(code, stdin=""):
 def run_asm(code, stdin=""):
     """Assemble with nasm and link with gcc (write a global `main:` and you can use the C library)."""
     if not have_nasm():
-        return {"stdout": "", "stderr": "assembly needs nasm + gcc on your PATH (or run it in a Linux "
-                "VM / WSL). Tip: declare `global main`, write `main:`, and link with gcc so printf/ret work.",
+        return {"stdout": "", "stderr": "assembly needs nasm + gcc installed (checked PATH and the usual "
+                "install folders). Tip: declare `global main`, write `main:`, and link with gcc so printf/ret work.",
                 "exit": -1, "timed_out": False}
     d = tempfile.mkdtemp(prefix="lockin_asm_")
     try:
+        nasm, gcc = find_tool("nasm"), find_tool("gcc")
         src = os.path.join(d, "prog.asm")
         obj = os.path.join(d, "prog.obj" if os.name == "nt" else "prog.o")
         out = os.path.join(d, "prog.exe" if os.name == "nt" else "prog.out")
         open(src, "w", encoding="utf-8").write(code)
         fmt = "win64" if os.name == "nt" else "elf64"
-        asm = _run(["nasm", "-f", fmt, src, "-o", obj], d, timeout=20)
+        asm = _run([nasm, "-f", fmt, src, "-o", obj], d, timeout=20, env=_exe_env(nasm))
         if asm["exit"] != 0:
             return {"stdout": "", "stderr": "assemble error:\n" + asm["stderr"], "exit": asm["exit"], "timed_out": False}
-        link = _run(["gcc", obj, "-o", out, "-no-pie"], d, timeout=20)
+        link = _run([gcc, obj, "-o", out, "-no-pie"], d, timeout=20, env=_exe_env(gcc))
         if link["exit"] != 0:
             return {"stdout": "", "stderr": "link error:\n" + link["stderr"], "exit": link["exit"], "timed_out": False}
-        return _run([out], d, stdin=stdin)
+        return _run([out], d, stdin=stdin, env=_exe_env(gcc))
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

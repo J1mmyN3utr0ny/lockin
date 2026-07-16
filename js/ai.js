@@ -21,7 +21,7 @@ const ENDPOINT = (key, model) =>
 
 export function getKey() { return (S.getState().settings.geminiKey || "").trim(); }
 export function hasKey() { return getKey().length > 20; }
-export function setKey(k) { S.updateLocal((st) => { st.settings.geminiKey = (k || "").trim(); }); } // device-only — no sync-clock bump
+export function setKey(k) { S.update((st) => { st.settings.geminiKey = (k || "").trim(); }); } // keys sync across devices
 
 // Backup key: a second free-tier key that takes over the moment the primary gets
 // rate-limited (429), doubling the effective quota. Session remembers which key works.
@@ -162,7 +162,7 @@ function keyGateHTML() {
       <li>Click <b>Create API key</b> → copy it.</li>
       <li>Paste it in <b>⚙ Settings → AI tutor</b>.</li>
     </ol>
-    <p class="small dim">It's free, stored only on this device, and never sent anywhere except Google when you ask a question.</p>
+    <p class="small dim">It's free and never sent anywhere except Google when you ask a question. Already pasted it on your other device? It syncs over automatically once both are connected to the Lab hub.</p>
     <button class="btn primary block" data-close style="margin-top:10px">Got it</button>`;
 }
 

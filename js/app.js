@@ -113,7 +113,7 @@ function openSettings() {
       <button class="btn sm" id="set-ai-save" style="flex:1">Save keys</button>
       <button class="btn sm primary" id="set-ai-test" style="flex:1">Test</button>
     </div>
-    <p class="small dim" style="margin-top:6px">Get free keys at <span class="kbd">aistudio.google.com/apikey</span>. Powers the tutor, Build Coach, lesson generator, day planner and workout adjuster — big jobs use <b>3.5 Flash</b>, small ones <b>Flash-Lite</b>. Stored only on this device.</p>
+    <p class="small dim" style="margin-top:6px">Get free keys at <span class="kbd">aistudio.google.com/apikey</span>. Powers the tutor, Build Coach, lesson generator, day planner and workout adjuster — big jobs use <b>3.5 Flash</b>, small ones <b>Flash-Lite</b>. Paste once — the keys sync to your other devices and the Lab through the hub.</p>
     <div id="set-ai-status" class="small" style="margin-top:4px"></div>
 
     <hr class="hr" />
@@ -123,7 +123,7 @@ function openSettings() {
       <button class="btn sm" id="set-lab-save" style="flex:1">Save</button>
       <button class="btn sm primary" id="set-lab-sync" style="flex:1">Sync now</button>
     </div>
-    <p class="small dim" style="margin-top:6px">Open the Lab on your PC → ⚙ Settings → copy the "Phone sync URL" here. Same Wi-Fi.</p>
+    <p class="small dim" style="margin-top:6px">Open the Lab on your PC → ⚙ Settings → copy the "Phone sync URL" here. Same Wi-Fi. On the phone, Chrome will ask to <b>access your local network</b> the first time — tap Allow (if you denied it: Chrome ⋮ → Site settings → Local network → Allow).</p>
     <div id="set-lab-status" class="small" style="margin-top:4px"></div>
 
     <hr class="hr" />
@@ -159,8 +159,8 @@ function openSettings() {
   m.querySelector("#set-date-clear").addEventListener("click", () => {
     S.update((st) => { st.settings.debugDate = null; }); closeModal(); route();
   });
-  // Keys are device-only config — save WITHOUT bumping the sync clock (see boot()).
-  const saveKeys = () => S.updateLocal((st) => {
+  // Keys SYNC across devices (paste once, both apps get them) — a normal clock-bumping save.
+  const saveKeys = () => S.update((st) => {
     st.settings.geminiKey = $("#set-ai").value.trim();
     st.settings.geminiKey2 = $("#set-ai2").value.trim();
   });

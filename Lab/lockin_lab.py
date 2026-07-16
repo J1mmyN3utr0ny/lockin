@@ -56,9 +56,17 @@ H1 = ("Segoe UI", 15, "bold") if os.name == "nt" else ("DejaVu Sans", 15, "bold"
 DIFF_COL = {"Easy": C["good"], "Medium": C["warn"], "Hard": C["bad"]}
 
 
+_key_ix = [0]  # rotates on 429 so later calls start from the key that still has quota
+
+
 def gemini(api_key, system, user, temperature=0.6):
-    if not api_key or len(api_key) < 20:
-        raise RuntimeError("No API key set — open ⚙ Settings and paste a free Gemini key.")
+    """Call Gemini. `api_key` may be one key or a list — extra keys are BACKUPS that take
+    over the moment the active one is rate-limited (429), same as the phone app's ai.js."""
+    keys = [api_key] if isinstance(api_key, str) else list(api_key or [])
+    keys = [k for k in keys if k and len(k.strip()) >= 20]
+    if not keys:
+        raise RuntimeError("No API key set — paste a free Gemini key in ⚙ Settings "
+                           "(or in the phone app; it syncs over through the hub).")
     last_err = None
     for mi in range(_model_ix[0], len(MODELS)):
         model = MODELS[mi]
@@ -73,31 +81,45 @@ def gemini(api_key, system, user, temperature=0.6):
         body = {"system_instruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": user}]}],
                 "generationConfig": gen}
-        req = urllib.request.Request(ENDPOINT % (model, urllib.parse.quote(api_key)),
-                                    data=json.dumps(body).encode("utf-8"),
-                                    headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=90) as r:
-                data = json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            # 404/400 can be model-specific (not served / request shape) — try the next model.
-            if e.code in (400, 404) and mi < len(MODELS) - 1:
-                last_err = "Model %s unavailable (%s) — trying %s." % (model, e.code, MODELS[mi + 1])
-                continue
-            m = {400: "Bad request — the key looks wrong. Re-check it in Settings.",
-                 403: "Access denied (403) — make a fresh free key at aistudio.google.com/apikey.",
-                 429: "Rate limit hit (free tier). Wait a minute."}.get(e.code, "Gemini error %s." % e.code)
-            raise RuntimeError(m)
-        except urllib.error.URLError:
-            raise RuntimeError("Network error — are you online?")
-        cands = data.get("candidates") or []
-        text = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", [])).strip() if cands else ""
-        if not text:
-            # empty reply (thinking ate the budget, or a bare candidate) — walk the chain
-            last_err = "%s returned an empty reply — trying the next model." % model
-            continue
-        _model_ix[0] = mi
-        return text
+        payload = json.dumps(body).encode("utf-8")
+        next_model = False
+        for ki in range(len(keys)):
+            key = keys[(_key_ix[0] + ki) % len(keys)]
+            req = urllib.request.Request(ENDPOINT % (model, urllib.parse.quote(key)),
+                                        data=payload,
+                                        headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=90) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    # this key is out of quota — rotate to the backup and retry in place
+                    last_err = ("All Gemini keys are rate-limited — wait a minute." if len(keys) > 1
+                                else "Rate limit hit (free tier) — wait a minute, or add a backup key "
+                                     "in the phone app's ⚙ Settings (it syncs over).")
+                    continue
+                if e.code in (400, 404):
+                    # model-specific (not served / request shape) — walk the model chain
+                    last_err = "Model %s unavailable (%s)." % (model, e.code)
+                    next_model = True
+                    break
+                m = {403: "Access denied (403) — make a fresh free key at aistudio.google.com/apikey."
+                     }.get(e.code, "Gemini error %s." % e.code)
+                raise RuntimeError(m)
+            except urllib.error.URLError:
+                raise RuntimeError("Network error — are you online?")
+            cands = data.get("candidates") or []
+            text = "".join(p.get("text", "") for p in cands[0].get("content", {}).get("parts", [])).strip() if cands else ""
+            if not text:
+                # empty reply (thinking ate the budget, or a bare candidate) — walk the chain
+                last_err = "%s returned an empty reply — trying the next model." % model
+                next_model = True
+                break
+            _model_ix[0] = mi
+            _key_ix[0] = (_key_ix[0] + ki) % len(keys)  # remember which key still has quota
+            return text
+        # all keys 429'd on this model (quotas are per-model — the next may have room),
+        # or the model itself failed (next_model) — either way keep walking the chain.
     raise RuntimeError(last_err or "No Gemini model available for this key.")
 
 
@@ -578,8 +600,16 @@ class Lab(tk.Tk):
         starters = {
             "c": ("c", "#include <stdio.h>\n\nint main(void) {\n    // Experiment here — press ▶ Run.\n    return 0;\n}\n"),
             "csharp": ("csharp", "using System;\n\nclass Program {\n    static void Main() {\n        // Experiment here — press ▶ Run.\n    }\n}\n"),
-            "asm": ("asm", "; Intel syntax (nasm). Link with gcc: declare a global main and you can use printf.\n"
-                           "global main\nextern printf\n\nsection .text\nmain:\n    ; experiment here — press ▶ Run\n    ret\n"),
+            "asm": ("asm", "; Intel syntax (nasm), assembled -f win64 and linked with gcc — printf works.\n"
+                           "; win64 rules this starter already follows: `default rel` for data addressing,\n"
+                           "; 1st arg in rcx, and 32 bytes of shadow space (+8 to align) before any call.\n"
+                           "default rel\nglobal main\nextern printf\n\nsection .data\n"
+                           "    msg db \"hello from asm!\", 10, 0\n\nsection .text\nmain:\n"
+                           "    sub rsp, 40          ; shadow space + stack alignment\n"
+                           "    lea rcx, [msg]       ; 1st argument (win64: rcx, rdx, r8, r9)\n"
+                           "    call printf\n"
+                           "    xor eax, eax         ; return 0\n"
+                           "    add rsp, 40\n    ret\n"),
         }
         if self.mode == "theory":
             # the Workbench is a plain writing pad — seed it with the answer scaffold.
@@ -772,13 +802,13 @@ class Lab(tk.Tk):
         eq = getattr(self, "_explain_q", None)
         if self._busy or not c or c.get("kind") != "lesson" or not eq:
             return
-        key = self.state.get("apiKey", "")
+        key = self._api_keys()
         answer = self.editor.get_code().strip()
         # ignore the seed scaffold / trivially short answers
         clean = "\n".join(l for l in answer.splitlines() if not l.strip().startswith("#")).strip()
         out = self.out_txt
         self._to_tab(0)
-        if len(key) < 20:
+        if not key:
             self._print(out, "Add a free Gemini key in ⚙ Settings to get graded.\n", "err", clear=True)
             return
         if len(clean) < 25:
@@ -913,8 +943,8 @@ class Lab(tk.Tk):
     def _ai(self, mode, user, echo=None):
         if self._busy:
             return
-        key = self.state.get("apiKey", "")
-        if len(key) < 20:
+        key = self._api_keys()
+        if not key:
             self._tutor("Tutor", "Add a free Gemini key in ⚙ Settings to use the tutor.", "err")
             return
         if echo:
@@ -996,7 +1026,7 @@ class Lab(tk.Tk):
             return
         if self._busy:
             return
-        key = self.state.get("apiKey", "")
+        key = self._api_keys()
         w = self.lesson_txt
         w.configure(state="normal")
         # drop any previous explanation, then open a fresh inline block at the end
@@ -1004,7 +1034,7 @@ class Lab(tk.Tk):
         if prev:
             w.delete(prev + " linestart", "end")
         w.insert("end", "\n──────────  PROBLEM, EXPLAINED  ──────────\n", "h")
-        if len(key) < 20:
+        if not key:
             w.insert("end", "Add a free Gemini key in ⚙ Settings to explain the problem.\n", "err")
             w.configure(state="disabled")
             return
@@ -1093,8 +1123,8 @@ class Lab(tk.Tk):
             return
         if self._busy:
             return
-        key = self.state.get("apiKey", "")
-        if len(key) < 20:
+        key = self._api_keys()
+        if not key:
             self._tutor("Tutor", "Add a free Gemini key in ⚙ Settings first.", "err")
             return
         L = self.courses[c["tid"]]["lessons"][c["idx"]]
@@ -1182,6 +1212,26 @@ class Lab(tk.Tk):
                 show()
         nxt.configure(command=advance)
         show()
+
+    # ---- AI keys: the Lab's own + the phone app's, synced through the hub ----
+
+    def _api_keys(self):
+        """Every usable Gemini key, in priority order: the Lab's own, then the phone app's
+        primary + backup from the relayed app_state.json (the PWA syncs its keys through the
+        hub, so pasting a key ONCE — on any device — serves every app). De-duplicated."""
+        raw = [self.state.get("apiKey", "")]
+        try:
+            with open(os.path.join(HERE, "app_state.json"), encoding="utf-8") as f:
+                s = json.load(f).get("settings") or {}
+            raw += [s.get("geminiKey", ""), s.get("geminiKey2", "")]
+        except Exception:
+            pass
+        keys = []
+        for k in raw:
+            k = (k or "").strip()
+            if len(k) >= 20 and k not in keys:
+                keys.append(k)
+        return keys
 
     # ---- the daily AI lesson (the track LockIn has in store today) ----
 
@@ -1288,8 +1338,8 @@ class Lab(tk.Tk):
     def _gen_dailyai(self):
         if self._busy:
             return
-        key = self.state.get("apiKey", "")
-        if len(key) < 20:
+        key = self._api_keys()
+        if not key:
             self._tutor("Tutor", "Add a free Gemini key in ⚙ Settings first.", "err")
             return
         tid, tname = self._todays_track()
@@ -1375,7 +1425,7 @@ class Lab(tk.Tk):
         fire = "   |   🔥 %d-day streak" % streak if streak else ""
         self.status.config(text="  %s   |   lang: %s   |   ⚡ XP %d%s   |   solved %d   |   phone sync: %s"
                            % (cursor, self.lang_var.get(), xp, fire, solved, getattr(self, "sync_url", "…")))
-        ok = len(self.state.get("apiKey", "")) >= 20
+        ok = bool(self._api_keys())
         self.ai_dot.config(text="● tutor" if ok else "○ tutor", fg=C["good"] if ok else C["warn"])
 
     def toggle_panel(self):
@@ -1403,7 +1453,9 @@ class Lab(tk.Tk):
     def open_settings(self):
         win = tk.Toplevel(self); win.title("Settings"); win.configure(bg=C["bg"]); win.transient(self); win.grab_set()
         tk.Label(win, text="🤖 Gemini 2.5 Flash API key (free)", bg=C["bg"], fg=C["fg"], font=UIB).pack(padx=18, pady=(16, 4), anchor="w")
-        tk.Label(win, text="Get one at aistudio.google.com/apikey — stored only on this PC.", bg=C["bg"], fg=C["mut"], font=UI, wraplength=430, justify="left").pack(padx=18, anchor="w")
+        tk.Label(win, text="Get one at aistudio.google.com/apikey — or leave this empty: keys pasted in the "
+                 "phone app sync over through the hub and the Lab uses them automatically.",
+                 bg=C["bg"], fg=C["mut"], font=UI, wraplength=430, justify="left").pack(padx=18, anchor="w")
         e = tk.Entry(win, width=56, bg=C["card"], fg=C["fg"], insertbackground=C["fg"], font=MONOS, relief="flat", show="•")
         e.pack(padx=18, pady=10); e.insert(0, self.state.get("apiKey", ""))
         st = tk.Label(win, text="", bg=C["bg"], font=UI); st.pack(padx=18, anchor="w")
@@ -1415,7 +1467,7 @@ class Lab(tk.Tk):
             self.state["apiKey"] = e.get().strip(); self._save_state(); self._set_status()
             st.config(text="Testing…", fg=C["mut"]); win.update()
             try:
-                gemini(self.state["apiKey"], "Reply with exactly: OK", "ping", 0); st.config(text="✓ Connected.", fg=C["good"])
+                gemini(self._api_keys(), "Reply with exactly: OK", "ping", 0); st.config(text="✓ Connected.", fg=C["good"])
             except Exception as ex:
                 st.config(text=str(ex), fg=C["bad"])
 

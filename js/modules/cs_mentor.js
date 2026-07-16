@@ -1,28 +1,52 @@
-// cs_mentor.js — Socratic guide for the Local-CyberComm project. Guides, never solves.
-// Hints are gated behind a ladder; the deepest is a pseudocode OUTLINE, never a full solution.
+// cs_mentor.js — full-lesson guide for the Local-CyberComm project. Each milestone
+// carries a complete lesson (spec, code, line-by-line walkthrough, pitfalls, verify);
+// the AI helper uses the BUILD COACH persona — concrete code allowed, by user decision.
 import * as S from "../state.js";
 import { esc, barHTML, refresh, toast, confetti, buzz } from "../ui.js";
 import { project, milestones, libs } from "../data/cs_milestones.js";
-import { openTutor, PERSONA } from "../ai.js";
+import { openTutor, BUILDER } from "../ai.js";
 
 function tutorFor(m, mode) {
   const ctx = `The student is on this milestone of his Local-CyberComm CS project: "${m.name}".\n` +
     `Milestone goal: ${m.goal}\n` +
-    `Design questions he should answer: ${m.designQuestions.join(" | ")}\n` +
+    `The exact requirements: ${(m.lesson && m.lesson.requirements || []).join(" | ")}\n` +
     `Libraries in play: ${m.libs.join(", ")}`;
   if (mode === "review") {
     openTutor({
-      title: "Review my code", context: ctx,
-      intro: "Paste the code you wrote for this milestone. I'll review it against the goal — I won't rewrite it.",
+      title: "Review my code", system: BUILDER, context: ctx,
+      intro: "Paste the code you wrote for this milestone. I'll review it against the spec and show you the exact lines to fix.",
       starters: ["Review the code I'm about to paste", "Is my message-framing correct?"]
     });
   } else {
     openTutor({
-      title: "Hint — " + m.name, context: ctx,
-      intro: "I'll give the smallest nudge that unblocks you — never the full solution. What's stuck?",
-      starters: ["I'm stuck on where to start", "Give me the smallest next step", "What should this function's inputs/outputs be?"]
+      title: "Build coach — " + m.name, system: BUILDER, context: ctx,
+      intro: "Concrete help: exact next steps, real code, and the why behind each line. Where are you stuck?",
+      starters: ["Walk me through the next step with code", "Explain this milestone's code differently", "It doesn't work — help me debug"]
     });
   }
+}
+
+// The full lesson attached to a milestone: spec → code steps with line-by-line → pitfalls → verify.
+function lessonHTML(m) {
+  const L = m.lesson;
+  if (!L) return "";
+  return `
+    <div class="section-title" style="margin-top:12px">📖 Full lesson — everything you need</div>
+    <p class="small" style="margin:4px 0 8px">${esc(L.intro)}</p>
+    <div class="section-title">Spec — what “done” means exactly</div>
+    <ul class="list-plain small">${L.requirements.map((r) => `<li>☐ ${esc(r)}</li>`).join("")}</ul>
+    ${L.steps.map((s) => `
+      <div class="card tight" style="background:var(--bg-2); margin-top:10px">
+        <b class="small">${esc(s.title)}</b>
+        <p class="small muted" style="margin:6px 0">${esc(s.teach)}</p>
+        <pre class="small" style="overflow-x:auto; background:#0a1120; border:1px solid var(--line,#26324a); border-radius:8px; padding:10px; line-height:1.5; white-space:pre">${esc(s.code)}</pre>
+        <div class="section-title" style="margin-top:8px">Line by line</div>
+        <ul class="list-plain small">${s.lines.map((l) => `<li>· ${esc(l)}</li>`).join("")}</ul>
+      </div>`).join("")}
+    <div class="section-title" style="margin-top:12px">⚠️ Classic bugs on this milestone</div>
+    <ul class="list-plain small">${L.pitfalls.map((p) => `<li style="color:var(--warn)">${esc(p)}</li>`).join("")}</ul>
+    <div class="section-title" style="margin-top:10px">✅ Verify it works</div>
+    <ul class="list-plain small">${L.verify.map((v) => `<li>${esc(v)}</li>`).join("")}</ul>`;
 }
 
 let sub = "milestones"; // milestones | libraries
@@ -66,27 +90,17 @@ function renderMilestones(view) {
         </div>
         ${isOpen ? `
           <p class="small muted" style="margin-top:8px"><b>Goal:</b> ${esc(m.goal)}</p>
-          <div class="section-title" style="margin-top:8px">Answer these first (yourself)</div>
+          <div class="section-title" style="margin-top:8px">Warm-up — try answering these before the lesson</div>
           <ul class="list-plain small">${m.designQuestions.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>
 
           <div class="section-title" style="margin-top:10px">Libraries in play</div>
           <div class="row wrap" style="gap:6px">${m.libs.map((l) => `<span class="tag">${esc(libs[l] ? libs[l].name : l)}</span>`).join("")}</div>
 
-          <div class="section-title" style="margin-top:12px">Stuck? Reveal hints one at a time</div>
-          <div id="hints-${m.id}">
-            ${[0, 1, 2].map((i) => {
-              const shown = r.hintLevel > i;
-              const labels = ["Nudge", "More specific", "Pseudocode outline"];
-              return shown
-                ? `<div class="card tight" style="background:var(--bg-2)"><div class="small"><b>${labels[i]}:</b> ${esc(m.hints[i])}</div></div>`
-                : (r.hintLevel === i ? `<button class="btn sm block" data-hint="${m.id}" style="margin-bottom:8px">Reveal ${labels[i].toLowerCase()} →</button>` : "");
-            }).join("")}
-            ${r.hintLevel >= 3 ? `<p class="small dim">That's the deepest hint — an outline, not a solution. The code is yours to write.</p>` : ""}
-          </div>
+          ${lessonHTML(m)}
 
-          <div class="section-title" style="margin-top:12px">AI tutor (Socratic — never solves)</div>
+          <div class="section-title" style="margin-top:12px">🏗 AI build coach (concrete code allowed)</div>
           <div class="row" style="gap:8px">
-            <button class="btn sm" data-tutor="${m.id}:hint" style="flex:1">💡 Hint from tutor</button>
+            <button class="btn sm" data-tutor="${m.id}:hint" style="flex:1">🏗 Help me build</button>
             <button class="btn sm" data-tutor="${m.id}:review" style="flex:1">✓ Review my code</button>
           </div>
 
@@ -104,11 +118,6 @@ function renderMilestones(view) {
 
   wrap.querySelectorAll("[data-ms]").forEach((el) => el.addEventListener("click", () => {
     openMs = openMs === el.dataset.ms ? null : el.dataset.ms; refresh();
-  }));
-  wrap.querySelectorAll("[data-hint]").forEach((el) => el.addEventListener("click", (e) => {
-    e.stopPropagation();
-    S.update((s2) => { rec(el.dataset.hint); s2.cs.milestones[el.dataset.hint].hintLevel++; });
-    refresh();
   }));
   wrap.querySelectorAll("[data-tutor]").forEach((el) => el.addEventListener("click", (e) => {
     e.stopPropagation();

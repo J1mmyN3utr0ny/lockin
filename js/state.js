@@ -131,19 +131,20 @@ export function updateLocal(mutator) {
   save();
   emit();
 }
-// Adopt a state blob pulled from the Lab sync hub. Keeps THIS device's connection settings and Lab
-// snapshot (labUrl / geminiKey are per-device), and does not bump updatedAt — we take the remote's.
+// Adopt a state blob pulled from the Lab sync hub. Keeps THIS device's labUrl (the desktop says
+// "localhost", the phone says the PC's LAN IP — they can never be the same value) and Lab snapshot,
+// and does not bump updatedAt — we take the remote's. The Gemini keys DO sync (single user, one
+// pair of keys everywhere) — but an empty remote key never wipes a locally-set one.
 export function applyRemote(remote) {
   if (!remote || typeof remote !== "object" || !remote.settings || remote.version === undefined) return false;
-  // Connection config is per-device; everything else (progress, xp, onboarded, …) syncs.
   const keepLabUrl = state.settings.labUrl;
   const keepKey = state.settings.geminiKey;
   const keepKey2 = state.settings.geminiKey2;
   const keepLab = state.lab;
   state = deepMerge(defaults(), remote);
   state.settings.labUrl = keepLabUrl;
-  state.settings.geminiKey = keepKey;
-  state.settings.geminiKey2 = keepKey2;
+  state.settings.geminiKey = state.settings.geminiKey || keepKey;
+  state.settings.geminiKey2 = state.settings.geminiKey2 || keepKey2;
   state.lab = keepLab;
   state.updatedAt = remote.updatedAt || Date.now();
   save();

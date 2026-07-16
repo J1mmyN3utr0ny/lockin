@@ -89,6 +89,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
+        # Older Chrome private-network preflights ask for this before letting a public
+        # HTTPS page (the installed PWA) talk to a LAN address. Harmless everywhere else.
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
 
     def do_GET(self):
