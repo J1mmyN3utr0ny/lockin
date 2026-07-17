@@ -132,7 +132,7 @@ export function adoptGymmy(payload) {
       (ex[t.exerciseId] = ex[t.exerciseId] || []).push({ w: Number(t.weightKg) || 0, r: Number(t.reps) || 0 });
     }
     if (!Object.keys(ex).length) continue;
-    const m = /^day\s+([a-e])$/i.exec((s.plan || "").trim());
+    const m = /^day\s+([a-f])$/i.exec((s.plan || "").trim());
     const existing = st.workoutLogs[s.date];
     const merged = {
       ...(existing || {}),

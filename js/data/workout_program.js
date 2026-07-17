@@ -22,7 +22,8 @@ export const philosophy = {
     "Biceps are maintained, not chased — one focused slot on Day C with a grip that spares forearms.",
     "Forearms are a growth FOCUS: direct work ends Day C + Day E, and a hand gripper covers the other days.",
     "Progressive overload is the whole game: beat last week's log by a rep or a small load, every session.",
-    "The exact same workouts live in your Gymmy app as the Day A–E templates — log in either app."
+    "Day F is an OPTIONAL Friday 6th: a light full-body pump for weeks that felt too easy — or swap it for a redo of any day you missed.",
+    "The exact same workouts live in your Gymmy app as the Day A–F templates — Gymmy is where you log; LockIn watches and ticks the schedule."
   ]
 };
 
@@ -105,11 +106,25 @@ export const days = [
       { id: "Farmers_Walk", name: "Farmers Walk", target: "Forearms/Grip", sets: 3, reps: null, cue: "GROWTH FOCUS. Heavy dumbbells, 30–40 m per carry, stand tall. The last thing you do — grip failure here is the goal." },
       { id: "Plate_Pinch", name: "Plate Pinch", target: "Forearms/Grip", sets: 3, reps: null, cue: "Two plates smooth-side out, pinch 30s per hand. Builds the thumb side wrist curls miss." }
     ]
+  },
+  {
+    id: "F", name: "Day F", focus: "Optional 6th — light full-body pump", optional: true,
+    warmup: "5 min easy bike + arm circles. This one is a BONUS for weeks that felt too light — keep every set 2-3 reps shy of failure.",
+    exercises: [
+      { id: "Leg_Press", name: "Leg Press", target: "Quads/Glutes", sets: 2, reps: 15, cue: "Light and smooth — pump blood through the legs, don't chase numbers." },
+      { id: "Butterfly", name: "Butterfly (pec deck)", target: "Chest", sets: 2, reps: 15, cue: "Squeeze and stretch. No grinding reps on a bonus day." },
+      { id: "Seated_Cable_Rows", name: "Seated Cable Rows", target: "Back", sets: 2, reps: 15, straps: true, cue: "STRAPS. Easy weight, perfect posture, full squeeze." },
+      { id: "Side_Lateral_Raise", name: "Side Lateral Raise", target: "Side delts", sets: 2, reps: 15, cue: "Light and strict — lead with the elbows." },
+      { id: "Cable_Crunch", name: "Cable Crunch", target: "Abs", sets: 2, reps: 15, cue: "Slow and controlled; round the spine." },
+      { id: "Standing_Calf_Raises", name: "Standing Calf Raises", target: "Calves", sets: 2, reps: 15, cue: "Full stretch at the bottom, pause at the top." }
+    ]
   }
 ];
 
 export function dayById(id) { return days.find((d) => d.id === id); }
 
 // Which workout to suggest for a given weekday (0=Sun..6=Sat). Gym = the 20:00
-// evening slot. 5 lifting days: Sun A .. Thu E; Fri rest/mobility, Sat rest.
-export const weekPlan = { 0: "A", 1: "B", 2: "C", 3: "D", 4: "E", 5: null, 6: null };
+// evening slot. 5 lifting days Sun A..Thu E, plus Friday's OPTIONAL midday 6th:
+// Day F (light pump) by default, or a redo of any A–E day the user picks in the
+// Workout tab (state.settings.sixthDay) — for weeks that felt too light. Sat rest.
+export const weekPlan = { 0: "A", 1: "B", 2: "C", 3: "D", 4: "E", 5: "F", 6: null };

@@ -1,7 +1,10 @@
-// physique.js — the Workout tab. Mirrors the user's Gymmy app 1:1 (same six
-// workouts, proper exercise names) and adds a set logger for progressive overload.
+// physique.js — the Workout tab. GYMMY-FIRST by design: Gymmy is where sets get
+// logged; this tab is the program's home base — what to do today, the overload
+// targets to beat (computed from Gymmy-synced logs), the optional 6th-day chooser,
+// and the AI session adjuster. No manual set entry here — finish in Gymmy and the
+// session syncs over by itself.
 import * as S from "../state.js";
-import { esc, refresh, toast, buzz, openModal, closeModal } from "../ui.js";
+import { esc, refresh, toast, openModal, closeModal } from "../ui.js";
 import { gemini, hasKey, extractJSON } from "../ai.js";
 import { days, dayById, weekPlan, philosophy, forearmFix, gymmyApp } from "../data/workout_program.js";
 
@@ -28,24 +31,18 @@ function overloadHint(ex) {
   return { text: `Last: ${summary}. Beat it by a rep or a small load.`, cls: "" };
 }
 
-function addSet(dayId, exId, w, r) {
-  if (!w && !r) return;
-  const key = S.todayKey();
-  if (!S.getState().workoutLogs[key]) S.logEvent("workout", `started logging the ${dayId} workout`);
-  S.update((st) => {
-    if (!st.workoutLogs[key]) st.workoutLogs[key] = { dayId, ex: {} };
-    st.workoutLogs[key].dayId = dayId;
-    if (!st.workoutLogs[key].ex[exId]) st.workoutLogs[key].ex[exId] = [];
-    st.workoutLogs[key].ex[exId].push({ w: Number(w) || 0, r: Number(r) || 0 });
-  });
-  S.addXP(3);
-  buzz();
-  refresh();
-}
-function clearSets(exId) {
-  const key = S.todayKey();
-  S.update((st) => { if (st.workoutLogs[key] && st.workoutLogs[key].ex) delete st.workoutLogs[key].ex[exId]; });
-  refresh();
+// Most recent Gymmy-synced session (workoutLogs are written by the hub sync).
+function lastGymmySession() {
+  const logs = S.getState().workoutLogs;
+  const keys = Object.keys(logs).sort().reverse();
+  for (const k of keys) {
+    const l = logs[k];
+    if (l && l.ex && Object.keys(l.ex).length) {
+      const sets = Object.values(l.ex).reduce((n, arr) => n + arr.length, 0);
+      return { key: k, dayId: l.dayId, exercises: Object.keys(l.ex).length, sets, fromGymmy: !!l.gymmy };
+    }
+  }
+  return null;
 }
 
 // ---- 🤖 adjust TODAY's session to the user's predicament ---------------------
@@ -140,12 +137,17 @@ export default {
   id: "physique", label: "Workout",
   render(view) {
     const key = S.todayKey();
-    const suggestedId = weekPlan[S.dow(key)];
+    const st = S.getState();
+    const sixth = st.settings.sixthDay || "F";
+    // Friday's suggestion honors the 6th-day choice (Day F light, or the chosen redo).
+    const suggestedId = S.dow(key) === 5 ? sixth : weekPlan[S.dow(key)];
     const activeId = viewDayId || suggestedId || "A";
     const day = dayById(activeId);
-    const todayLog = S.getState().workoutLogs[key] || { ex: {} };
+    const todayLog = st.workoutLogs[key] || { ex: {} };
     const suggested = suggestedId ? dayById(suggestedId) : null;
     const onAndroid = /android/i.test(navigator.userAgent);
+    const last = lastGymmySession();
+    const gymTicked = !!(st.days[key] && st.days[key].blocks && st.days[key].blocks.gym);
 
     // Today's AI adjustment (if any) bends the session without touching the program.
     const tweak = (S.getState().workoutTweaks || {})[key];
@@ -158,12 +160,29 @@ export default {
       : day.exercises;
 
     view.innerHTML = `
-      <div class="card tight" style="border-color:rgba(52,211,153,.35)">
+      <div class="card" style="border-color:rgba(52,211,153,.45); background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card))">
         <div class="row between">
-          <b>🔗 Connected to Gymmy</b>
-          ${onAndroid ? `<a class="btn sm" href="${gymmyApp.intentUrl}">Open Gymmy ↗</a>` : ""}
+          <b>🏋️ Gymmy runs the gym</b>
+          ${onAndroid ? `<a class="btn sm primary" href="${gymmyApp.intentUrl}">Open Gymmy ↗</a>` : `<span class="tag">on your phone</span>`}
         </div>
-        <p class="small muted" style="margin:6px 0 0">This program lives inside Gymmy too — the built-in <b>Day A–E</b> templates (Plans tab) are these exact workouts, targets included. Tap one there to create it as a plan. Log sets in either app.</p>
+        <p class="small muted" style="margin:6px 0 8px">Sets are logged <b>in Gymmy</b> — start today's plan there (the Day A–F templates ARE this program). Finishing a session syncs it here and ticks today's gym block by itself. This tab is home base: what to do, and what to beat.</p>
+        <div class="row wrap" style="gap:6px">
+          ${gymTicked
+            ? `<span class="pill good">✓ today's session synced from Gymmy</span>`
+            : `<span class="pill">⏳ waiting for today's Gymmy session</span>`}
+          ${last
+            ? `<span class="pill accent">last: ${last.dayId ? "Day " + esc(last.dayId) : "workout"} · ${esc(S.prettyDate(last.key))} · ${last.sets} sets</span>`
+            : `<span class="pill warn">no synced sessions yet — finish one in Gymmy</span>`}
+        </div>
+      </div>
+
+      <div class="card tight" style="border-color:rgba(245,196,81,.4)">
+        <b>➕ Optional 6th session — Friday midday</b>
+        <p class="small muted" style="margin:6px 0 8px">For weeks that felt too light. Default is <b>Day F</b> — a light full-body pump — or pick a day to <b>redo</b> (whichever the week shortchanged). Entirely guilt-free to skip.</p>
+        <div class="row wrap" style="gap:6px">
+          ${["F", "A", "B", "C", "D", "E"].map((id) => `
+            <button class="btn sm ${sixth === id ? "primary" : "ghost"}" data-sixth="${id}">${id === "F" ? "Day F · light (default)" : "Redo " + esc(dayById(id).name)}</button>`).join("")}
+        </div>
       </div>
 
       <div class="card tight" style="border-color:rgba(251,113,133,.35)">
@@ -172,7 +191,7 @@ export default {
         <ul class="list-plain small">${forearmFix.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
       </div>
 
-      <div class="section-title">Choose workout ${suggested ? `· today = ${esc(suggested.name)}` : "· today = rest"}</div>
+      <div class="section-title">Choose workout ${suggested ? `· today = ${esc(suggested.name)}${S.dow(key) === 5 ? " (optional)" : ""}` : "· today = rest"}</div>
       <div class="row wrap" style="gap:8px; margin-bottom:12px">
         ${days.map((d) => `<button class="btn sm ${d.id === activeId ? "primary" : ""}" data-day="${d.id}">${esc(d.name)}</button>`).join("")}
       </div>
@@ -212,6 +231,14 @@ export default {
       toast("Back to the full session."); refresh();
     });
 
+    view.querySelectorAll("[data-sixth]").forEach((b) => b.addEventListener("click", () => {
+      const id = b.dataset.sixth;
+      S.update((s2) => { s2.settings.sixthDay = id; });
+      S.logEvent("adjust", id === "F" ? "6th day set to the light Day F" : `6th day set to redo Day ${id}`);
+      toast(id === "F" ? "Friday's optional session: Day F (light) ✓" : `Friday's optional session: redo Day ${id} ✓`);
+      refresh();
+    }));
+
     const list = view.querySelector("#ex-list");
     list.innerHTML = exList.map((ex) => {
       const hint = overloadHint(ex);
@@ -226,22 +253,10 @@ export default {
           <p class="small muted" style="margin:8px 0 6px">💡 ${esc(ex.cue)}</p>
           <p class="small ${hint.cls === "good" ? "" : "dim"}" style="margin:0 0 6px; color:${hint.cls === "good" ? "var(--good)" : ""}">${esc(hint.text)}</p>
           <div class="row wrap" style="gap:6px; margin:8px 0">
-            ${sets.map((s) => `<span class="pill accent">${s.w}kg × ${s.r}</span>`).join("") || `<span class="small dim">no sets logged yet</span>`}
-          </div>
-          <div class="row" style="gap:6px">
-            <input type="number" placeholder="kg" id="w-${ex.id}">
-            <input type="number" placeholder="reps" id="r-${ex.id}">
-            <button class="btn sm primary" data-add="${ex.id}">＋ set</button>
-            ${sets.length ? `<button class="btn sm ghost" data-clear="${ex.id}">clear</button>` : ""}
+            ${sets.map((s) => `<span class="pill accent">${s.w}kg × ${s.r}</span>`).join("") ||
+              `<span class="small dim">no sets synced today — log them in Gymmy</span>`}
           </div>
         </div>`;
     }).join("");
-
-    list.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
-      const id = b.dataset.add;
-      addSet(activeId, id, view.querySelector(`#w-${id}`).value, view.querySelector(`#r-${id}`).value);
-    }));
-    list.querySelectorAll("[data-clear]").forEach((b) =>
-      b.addEventListener("click", () => clearSets(b.dataset.clear)));
   }
 };

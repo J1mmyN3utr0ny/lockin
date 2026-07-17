@@ -61,11 +61,20 @@ function travelBlock(id, time, mins, title, mode = "drive", group) {
 }
 
 function gymBlock(time, dow) {
-  const id = weekPlan[dow];
+  let id = weekPlan[dow];
   if (!id) return { id: "gym", time, cat: "gym", title: "Rest / mobility", sub: "No lift scheduled — walk, stretch, recover.", link: L.gym, group: "gym" };
+  if (dow === 5) {
+    // Friday = the OPTIONAL 6th session: Day F (light) by default, or the user's
+    // chosen redo of a day the week shortchanged (picked in the Workout tab).
+    id = S.getState().settings.sixthDay || "F";
+    const d = dayById(id) || dayById("F");
+    const what = d.id === "F" ? `${d.name} (light pump)` : `redo ${d.name}`;
+    return { id: "gym", time, cat: "gym", title: `Optional gym · ${what}`,
+      sub: `${d.focus} — only if the week felt too light; skip guilt-free. Log it in Gymmy (it ticks this block). Swap which day in Body → Workout.`,
+      link: L.gym, group: "gym" };
+  }
   const d = dayById(id);
-  const optional = dow === 5 ? " · optional — skip guilt-free if the week was heavy" : "";
-  return { id: "gym", time, cat: "gym", title: `Gym · ${d.name}`, sub: `${d.focus} — same workout as in Gymmy${optional}`, link: L.gym, group: "gym" };
+  return { id: "gym", time, cat: "gym", title: `Gym · ${d.name}`, sub: `${d.focus} — do it in Gymmy; finishing there ticks this block by itself`, link: L.gym, group: "gym" };
 }
 
 // PET work only exists while the exam is still ahead (the course itself stops at EXAM_DATE).

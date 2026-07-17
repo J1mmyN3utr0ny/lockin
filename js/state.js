@@ -32,7 +32,7 @@ function defaults() {
     createdAt: new Date().toISOString(),
     updatedAt: 0, // ms of the last edit — drives last-write-wins sync between phone and PC
     startKey: PROGRAM_START, // program anchored to Jul 12, not first-run day
-    settings: { debugDate: null, mode: "auto", onboarded: false, geminiKey: "", geminiKey2: "", labUrl: "" },
+    settings: { debugDate: null, mode: "auto", onboarded: false, geminiKey: "", geminiKey2: "", labUrl: "", sixthDay: "F" },
     lab: { status: null, syncedAt: null }, // last synced snapshot from the desktop Lab
     profile: {
       name: "",
