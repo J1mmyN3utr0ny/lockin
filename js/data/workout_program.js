@@ -9,21 +9,23 @@
 export const gymmyApp = {
   name: "Gymmy",
   package: "com.yaniv.gymmy",
-  // Launches the installed Gymmy app from the PWA on Android. Chrome's intent:// syntax
-  // (developer.chrome.com/docs/multidevice/android/intents) requires the double slash even
-  // with no host — "intent:#Intent;...;end" (single colon, no host) is NOT valid and silently
-  // does nothing when clicked. That was the bug: this used to be missing the "//".
-  intentUrl: "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.yaniv.gymmy;end"
+  // Launches the installed Gymmy app from the PWA on Android via its gymmy:// deep link
+  // (Gymmy 1.4+ declares a VIEW+BROWSABLE intent-filter for scheme "gymmy"). Browsers
+  // refuse to dispatch intent:// links to activities without category BROWSABLE, so the
+  // old MAIN/LAUNCHER-targeting URL could never work — the fix required a change in
+  // Gymmy's manifest, not just here. Chrome intent syntax: scheme + package, host-less.
+  intentUrl: "intent://open/#Intent;scheme=gymmy;package=com.yaniv.gymmy;end"
 };
 
 export const philosophy = {
   title: "How this program is built for you",
   points: [
-    "Legs are trained twice a week (Day B + Day D) because they're the biggest gap.",
-    "Chest gets a heavy day and a second volume day (Day A + Day E).",
-    "Abs are hit 3×/week; obliques get dedicated loaded work (new for you) on Day D.",
-    "Biceps are maintained, not chased — one focused slot on Day C with a grip that spares forearms.",
-    "Forearms are a growth FOCUS: direct work ends Day C + Day E, and a hand gripper covers the other days.",
+    "EQUIPMENT RULE: machines with built-in weight stacks and cables first; dumbbells and short/EZ bars are fine. NO free-barbell squats, deadlifts, RDLs or lunges — nothing that means standing up and down under a bar.",
+    "Fewer sets, more exercises: most slots are 2 hard sets. Variety covers the muscle from more angles without grinding volume on any one lift.",
+    "CALVES are an emphasis now: trained on five days (seated raise, standing machine, leg-press calf press) — they grow on frequency.",
+    "Legs are trained twice (Day B quads + Day D posterior chain), and adductors/abductors get machine work BOTH days — inner/outer thigh is real leg mass.",
+    "Chest keeps a heavy day and a volume day (Day A + Day E). Abs 3×/week on machines and cables.",
+    "Biceps are maintained, not chased; forearms grow via direct wrist work on cables, dumbbells and short bars (Day C + Day E).",
     "Progressive overload is the whole game: beat last week's log by a rep or a small load, every session.",
     "Day F is an OPTIONAL Friday 6th: a light full-body pump for weeks that felt too easy — or swap it for a redo of any day you missed.",
     "The exact same workouts live in your Gymmy app as the Day A–F templates — Gymmy is where you log; LockIn watches and ticks the schedule."
@@ -35,11 +37,11 @@ export const forearmFix = {
   title: "Stop the forearm takeover",
   why: "Your forearms fail/pump first because they carry the grip on every pull and curl, so the target muscle never gets fully loaded.",
   rules: [
-    "Use lifting straps on ALL back/pull work (pulldowns, rows, RDLs). The lats/hamstrings should quit first — not your grip.",
+    "Use lifting straps on ALL back/pull work (pulldowns, rows). The lats should quit first — not your grip.",
     "Prefer machines & cables for chest (machine press, pec deck, cable fly). Less stabilizing grip = more chest.",
     "On curls, cue 'drive the elbow, relax the hand'. Think of your hand as a hook, not a gripper.",
     "Pre-exhaust the target: do the isolation (pec deck / fly) BEFORE the press so the chest is the limiter.",
-    "Cut direct forearm/grip work to near zero this block — they're already ahead."
+    "Forearm GROWTH comes from the dedicated wrist-curl slots (Day C + Day E) — seated, supported, no heavy carrying."
   ]
 };
 
@@ -47,67 +49,70 @@ export const forearmFix = {
 // `cue` and `straps` are LockIn's coaching overlay on top.
 export const days = [
   {
-    id: "A", name: "Day A", focus: "Chest (heavy) · abs",
+    id: "A", name: "Day A", focus: "Chest (heavy) · abs · calves",
     warmup: "5 min bike + arm circles, then 1-2 light ramp-up sets on the first press.",
     exercises: [
-      { id: "Butterfly", name: "Butterfly (pec deck)", target: "Chest", sets: 3, reps: 12, cue: "Pre-exhaust: squeeze hands together with your chest, not your arms. This tires the chest first." },
-      { id: "Leverage_Incline_Chest_Press", name: "Leverage Incline Chest Press", target: "Upper chest", sets: 4, reps: 10, cue: "Elbows ~45°. Drive with the chest; hands are just hooks on the handles." },
-      { id: "Machine_Bench_Press", name: "Machine Bench Press", target: "Chest", sets: 3, reps: 10, cue: "Machine = no grip fatigue. Full stretch at the bottom, controlled." },
-      { id: "Cable_Crossover", name: "Cable Crossover", target: "Lower chest", sets: 3, reps: 12, cue: "High-to-low arc, meet at the belt line, 1s squeeze." },
-      { id: "Cable_Crunch", name: "Cable Crunch", target: "Abs", sets: 3, reps: 12, cue: "Round the spine down toward the pelvis — crunch, don't hip-hinge." },
-      { id: "Hanging_Leg_Raise", name: "Hanging Leg Raise", target: "Lower abs", sets: 3, reps: 12, cue: "Curl the pelvis up. Straps optional so grip isn't the limiter." }
+      { id: "Butterfly", name: "Butterfly (pec deck)", target: "Chest", sets: 2, reps: 12, cue: "Pre-exhaust: squeeze hands together with your chest, not your arms. This tires the chest first." },
+      { id: "Leverage_Incline_Chest_Press", name: "Leverage Incline Chest Press", target: "Upper chest", sets: 3, reps: 10, cue: "The day's main lift. Elbows ~45°; drive with the chest — hands are just hooks." },
+      { id: "Machine_Bench_Press", name: "Machine Bench Press", target: "Chest", sets: 2, reps: 10, cue: "Machine = no grip fatigue. Full stretch at the bottom, controlled." },
+      { id: "Cable_Crossover", name: "Cable Crossover", target: "Lower chest", sets: 2, reps: 12, cue: "High-to-low arc, meet at the belt line, 1s squeeze." },
+      { id: "Ab_Crunch_Machine", name: "Ab Crunch Machine", target: "Abs", sets: 2, reps: 15, cue: "Pin-loaded and strict — exhale hard and curl the ribs to the hips." },
+      { id: "Cable_Crunch", name: "Cable Crunch", target: "Abs", sets: 2, reps: 12, cue: "Round the spine down toward the pelvis — crunch, don't hip-hinge." },
+      { id: "Seated_Calf_Raise", name: "Seated Calf Raise", target: "Calves", sets: 3, reps: 15, cue: "CALF EMPHASIS. Full stretch at the bottom, 1s pause at the top — the pause is the growth." }
     ]
   },
   {
-    id: "B", name: "Day B", focus: "Legs — quad focus · calves",
-    warmup: "5 min bike, bodyweight squats, one light leg-extension set.",
+    id: "B", name: "Day B", focus: "Legs — quads · adductors/abductors · calves",
+    warmup: "5 min bike, one light leg-extension set, one light leg-press set.",
     exercises: [
-      { id: "Hack_Squat", name: "Hack Squat", target: "Quads", sets: 4, reps: 10, cue: "Full depth, control the descent 2-3s. This is your #1 leg builder." },
-      { id: "Leg_Press", name: "Leg Press", target: "Quads/Glutes", sets: 3, reps: 12, cue: "Feet mid-platform. Don't lock out hard; keep tension." },
-      { id: "Romanian_Deadlift", name: "Romanian Deadlift", target: "Hamstrings", sets: 3, reps: 10, straps: true, cue: "STRAPS ON. Hinge, soft knees, feel the hamstring stretch. Grip must not be the limiter." },
-      { id: "Leg_Extensions", name: "Leg Extensions", target: "Quads", sets: 3, reps: 12, cue: "1s squeeze at the top. Great finisher for the teardrop." },
-      { id: "Seated_Leg_Curl", name: "Seated Leg Curl", target: "Hamstrings", sets: 3, reps: 12, cue: "Control the negative." },
-      { id: "Standing_Calf_Raises", name: "Standing Calf Raises", target: "Calves", sets: 4, reps: 15, cue: "Full stretch at the bottom, pause at the top." }
+      { id: "Leg_Press", name: "Leg Press", target: "Quads/Glutes", sets: 3, reps: 12, cue: "Your #1 leg builder now — seated, supported, heavy. Feet mid-platform; don't lock out hard." },
+      { id: "Leg_Extensions", name: "Leg Extensions", target: "Quads", sets: 3, reps: 12, cue: "1s squeeze at the top. Builds the teardrop without any standing." },
+      { id: "Seated_Leg_Curl", name: "Seated Leg Curl", target: "Hamstrings", sets: 2, reps: 12, cue: "Control the negative — hamstrings grow on the way back." },
+      { id: "Thigh_Adductor", name: "Thigh Adductor (machine)", target: "Inner thigh", sets: 2, reps: 15, cue: "NEW. Squeeze in smoothly, no slamming — inner thigh is real leg size." },
+      { id: "Thigh_Abductor", name: "Thigh Abductor (machine)", target: "Outer thigh/Glutes", sets: 2, reps: 15, cue: "NEW. Push out against the pads; keeps the hips strong and balanced." },
+      { id: "Standing_Calf_Raises", name: "Standing Calf Raises (machine)", target: "Calves", sets: 3, reps: 15, cue: "CALF EMPHASIS. Full stretch, pause at the top, no bouncing." },
+      { id: "Calf_Press_On_The_Leg_Press_Machine", name: "Calf Press (leg press)", target: "Calves", sets: 2, reps: 15, cue: "Straight into it after the standing raises — a different angle on the same growth." }
     ]
   },
   {
     id: "C", name: "Day C", focus: "Back (straps) · biceps · forearms",
     warmup: "Band pull-aparts, one light lat-pulldown set.",
     exercises: [
-      { id: "Wide-Grip_Lat_Pulldown", name: "Wide-Grip Lat Pulldown", target: "Lats", sets: 4, reps: 10, straps: true, cue: "STRAPS. Pull with the elbows to the hips; imagine your hands are just hooks." },
-      { id: "Dumbbell_Incline_Row", name: "Dumbbell Incline Row", target: "Mid-back", sets: 3, reps: 10, straps: true, cue: "STRAPS. Chest on the bench, squeeze shoulder blades; don't yank with the arms." },
-      { id: "Seated_Cable_Rows", name: "Seated Cable Rows", target: "Back", sets: 3, reps: 10, straps: true, cue: "STRAPS. Chest up, drive elbows back." },
-      { id: "Face_Pull", name: "Face Pull", target: "Rear delts", sets: 3, reps: 15, cue: "Rope to forehead, external rotation. Posture insurance." },
-      { id: "Incline_Dumbbell_Curl", name: "Incline Dumbbell Curl", target: "Biceps", sets: 3, reps: 10, cue: "Elbow drives the rep; keep the wrist neutral so the biceps do the work." },
-      { id: "Standing_Biceps_Cable_Curl", name: "Standing Biceps Cable Curl", target: "Biceps", sets: 2, reps: 12, cue: "Constant tension, strict form." },
-      { id: "Palms-Up_Barbell_Wrist_Curl_Over_A_Bench", name: "Palms-Up Barbell Wrist Curl Over A Bench", target: "Forearms", sets: 3, reps: 15, cue: "GROWTH FOCUS. Light bar, full stretch at the bottom, slow squeeze up — last thing of the day so grip fatigue costs nothing." },
-      { id: "Reverse_Barbell_Curl", name: "Reverse Barbell Curl", target: "Forearms", sets: 3, reps: 12, cue: "Light weight, palms down — hits the top of the forearm that actually shows." }
+      { id: "Wide-Grip_Lat_Pulldown", name: "Wide-Grip Lat Pulldown", target: "Lats", sets: 3, reps: 10, straps: true, cue: "STRAPS. Pull with the elbows to the hips; imagine your hands are just hooks." },
+      { id: "Seated_Cable_Rows", name: "Seated Cable Rows", target: "Back", sets: 2, reps: 10, straps: true, cue: "STRAPS. Chest up, drive elbows back." },
+      { id: "Dumbbell_Incline_Row", name: "Dumbbell Incline Row", target: "Mid-back", sets: 2, reps: 10, straps: true, cue: "STRAPS. Chest on the bench so the lower back rests; squeeze the shoulder blades." },
+      { id: "Face_Pull", name: "Face Pull", target: "Rear delts", sets: 2, reps: 15, cue: "Rope to forehead, external rotation. Posture insurance." },
+      { id: "Incline_Dumbbell_Curl", name: "Incline Dumbbell Curl", target: "Biceps", sets: 2, reps: 10, cue: "Elbow drives the rep; keep the wrist neutral so the biceps do the work." },
+      { id: "Cable_Hammer_Curls_-_Rope_Attachment", name: "Cable Hammer Curls (rope)", target: "Biceps/Forearms", sets: 2, reps: 12, cue: "Neutral grip on the rope — hits the arm-thickness muscles and the top of the forearm together." },
+      { id: "Palms-Up_Barbell_Wrist_Curl_Over_A_Bench", name: "Palms-Up Wrist Curl (short bar)", target: "Forearms", sets: 2, reps: 15, cue: "GROWTH FOCUS. Light short bar, full stretch at the bottom, slow squeeze up." },
+      { id: "Reverse_Barbell_Curl", name: "Reverse Curl (EZ bar)", target: "Forearms", sets: 2, reps: 12, cue: "Light EZ bar, palms down — the top of the forearm that actually shows." }
     ]
   },
   {
-    id: "D", name: "Day D", focus: "Legs #2 — posterior chain · obliques",
-    warmup: "5 min incline walk, hip openers.",
+    id: "D", name: "Day D", focus: "Legs #2 — hamstrings/glutes · obliques · calves",
+    warmup: "5 min incline walk, hip openers, one light lying-curl set.",
     exercises: [
-      { id: "Split_Squat_with_Dumbbells", name: "Split Squat with Dumbbells", target: "Quads/Glutes", sets: 3, reps: 10, cue: "Per leg. Front-foot pressure, tall torso. Balance + growth for lagging legs." },
-      { id: "Barbell_Hip_Thrust", name: "Barbell Hip Thrust", target: "Glutes", sets: 3, reps: 10, cue: "Full lockout, 1s squeeze. Builds the shape the legs are missing." },
-      { id: "Lying_Leg_Curls", name: "Lying Leg Curls", target: "Hamstrings", sets: 3, reps: 10, cue: "No hip movement; hamstrings only." },
-      { id: "Dumbbell_Lunges", name: "Dumbbell Lunges", target: "Legs", sets: 3, reps: 10, straps: true, cue: "Per leg, walking-style. STRAPS so grip doesn't cap the set." },
-      { id: "Standing_Cable_Wood_Chop", name: "Standing Cable Wood Chop", target: "Obliques", sets: 3, reps: 12, cue: "Per side. Rotate from the torso, not the arms. This is your new oblique work." },
-      { id: "Side_Bridge", name: "Side Bridge (side plank)", target: "Obliques/Core", sets: 3, reps: null, cue: "30-40s per side. Stay square; resist the lean — anti-rotation builds the sides." }
+      { id: "Lying_Leg_Curls", name: "Lying Leg Curls", target: "Hamstrings", sets: 3, reps: 10, cue: "The day's main lift. No hip movement; hamstrings only." },
+      { id: "Leg_Press", name: "Leg Press (feet high)", target: "Glutes/Hamstrings", sets: 2, reps: 12, cue: "Feet HIGH and wide on the platform — same machine, posterior-chain bias. No barbell needed." },
+      { id: "One-Legged_Cable_Kickback", name: "One-Legged Cable Kickback", target: "Glutes", sets: 2, reps: 12, cue: "Per leg. Ankle cuff on the low pulley; drive the heel back and squeeze — glute work without a bar." },
+      { id: "Thigh_Adductor", name: "Thigh Adductor (machine)", target: "Inner thigh", sets: 2, reps: 15, cue: "Second weekly hit — inner thigh responds fast to frequency." },
+      { id: "Thigh_Abductor", name: "Thigh Abductor (machine)", target: "Outer thigh/Glutes", sets: 2, reps: 15, cue: "Second weekly hit. Push out, pause, control back in." },
+      { id: "Standing_Cable_Wood_Chop", name: "Standing Cable Wood Chop", target: "Obliques", sets: 2, reps: 12, cue: "Per side. Rotate from the torso, not the arms — your loaded oblique work." },
+      { id: "Seated_Calf_Raise", name: "Seated Calf Raise", target: "Calves", sets: 3, reps: 15, cue: "CALF EMPHASIS — second seated session of the week. Pause every rep at the top." }
     ]
   },
   {
-    id: "E", name: "Day E", focus: "Shoulders · chest #2 · abs · forearms",
+    id: "E", name: "Day E", focus: "Shoulders · chest #2 · abs · forearms · calves",
     warmup: "Band dislocates, one light lateral-raise set.",
     exercises: [
-      { id: "Machine_Shoulder_Military_Press", name: "Machine Shoulder (Military) Press", target: "Front/Side delts", sets: 4, reps: 10, cue: "Press slightly forward of the ears; controlled. Machine = no grip demand." },
-      { id: "Side_Lateral_Raise", name: "Side Lateral Raise", target: "Side delts", sets: 4, reps: 15, cue: "Lead with the elbow; light and strict for width." },
-      { id: "Incline_Cable_Chest_Press", name: "Incline Cable Chest Press", target: "Upper chest", sets: 3, reps: 10, cue: "Second chest hit of the week — grip-light selection." },
-      { id: "Butterfly", name: "Butterfly (pec deck)", target: "Chest", sets: 3, reps: 12, cue: "Pure chest squeeze, no grip demand." },
-      { id: "Reverse_Machine_Flyes", name: "Reverse Machine Flyes", target: "Rear delts", sets: 3, reps: 15, cue: "Balances all the pressing." },
-      { id: "Decline_Crunch", name: "Decline Crunch", target: "Abs", sets: 3, reps: 12, cue: "Hold a plate on your chest once 12 is easy. Slow eccentric; brace hard." },
-      { id: "Farmers_Walk", name: "Farmers Walk", target: "Forearms/Grip", sets: 3, reps: null, cue: "GROWTH FOCUS. Heavy dumbbells, 30–40 m per carry, stand tall. The last thing you do — grip failure here is the goal." },
-      { id: "Plate_Pinch", name: "Plate Pinch", target: "Forearms/Grip", sets: 3, reps: null, cue: "Two plates smooth-side out, pinch 30s per hand. Builds the thumb side wrist curls miss." }
+      { id: "Machine_Shoulder_Military_Press", name: "Machine Shoulder (Military) Press", target: "Front/Side delts", sets: 3, reps: 10, cue: "Press slightly forward of the ears; controlled. Machine = no grip demand." },
+      { id: "Side_Lateral_Raise", name: "Side Lateral Raise", target: "Side delts", sets: 2, reps: 12, cue: "Dumbbells, light and strict — lead with the elbows for width." },
+      { id: "Incline_Cable_Chest_Press", name: "Incline Cable Chest Press", target: "Upper chest", sets: 2, reps: 10, cue: "Second chest hit of the week — grip-light cable pressing." },
+      { id: "Reverse_Machine_Flyes", name: "Reverse Machine Flyes", target: "Rear delts", sets: 2, reps: 15, cue: "Balances all the pressing." },
+      { id: "Cable_Crunch", name: "Cable Crunch", target: "Abs", sets: 2, reps: 15, cue: "Third ab session of the week — slow, exhale hard at the bottom." },
+      { id: "Seated_Two-Arm_Palms-Up_Low-Pulley_Wrist_Curl", name: "Cable Wrist Curl (low pulley)", target: "Forearms", sets: 2, reps: 15, cue: "GROWTH FOCUS. Constant cable tension the whole rep — better than any carry, no walking required." },
+      { id: "Seated_Dumbbell_Palms-Down_Wrist_Curl", name: "Palms-Down DB Wrist Curl", target: "Forearms", sets: 2, reps: 12, cue: "Light dumbbells, palms down — the extensors that make the forearm look wide." },
+      { id: "Calf_Press_On_The_Leg_Press_Machine", name: "Calf Press (leg press)", target: "Calves", sets: 3, reps: 15, cue: "CALF EMPHASIS — heavy day. Full stretch at the bottom; make the top brutal." }
     ]
   },
   {
@@ -119,7 +124,7 @@ export const days = [
       { id: "Seated_Cable_Rows", name: "Seated Cable Rows", target: "Back", sets: 2, reps: 15, straps: true, cue: "STRAPS. Easy weight, perfect posture, full squeeze." },
       { id: "Side_Lateral_Raise", name: "Side Lateral Raise", target: "Side delts", sets: 2, reps: 15, cue: "Light and strict — lead with the elbows." },
       { id: "Cable_Crunch", name: "Cable Crunch", target: "Abs", sets: 2, reps: 15, cue: "Slow and controlled; round the spine." },
-      { id: "Standing_Calf_Raises", name: "Standing Calf Raises", target: "Calves", sets: 2, reps: 15, cue: "Full stretch at the bottom, pause at the top." }
+      { id: "Seated_Calf_Raise", name: "Seated Calf Raise", target: "Calves", sets: 2, reps: 20, cue: "High-rep calf pump to close the week — pause at the top, always." }
     ]
   }
 ];

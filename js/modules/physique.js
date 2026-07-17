@@ -103,10 +103,12 @@ function adjustWorkout(day, key) {
       try {
         const raw = await gemini({
           tier: "smart",
-          system: "You are the training assistant inside LockIn. The user follows a fixed 5-day program mirrored in his " +
+          system: "You are the training assistant inside LockIn. The user follows a fixed 5+1-day program mirrored in his " +
             "Gymmy app; you may bend ONE day's session to his current state (sleep, soreness, time) without changing the " +
-            "program. Preserve the session's main purpose when possible; forearms are a current growth focus. Reply with " +
-            "ONLY valid JSON matching the requested schema.",
+            "program. His standing rules: machines with built-in weight stacks and cables first, dumbbells and short/EZ " +
+            "bars fine, NEVER free-barbell squats/deadlifts/lunges; CALVES are a growth emphasis (cut them last), " +
+            "forearms are a growth focus, most slots run 2 hard sets. Preserve the session's main purpose when possible. " +
+            "Reply with ONLY valid JSON matching the requested schema.",
           messages: [{ role: "user", text: prompt }], temperature: 0.3
         });
         const parsed = extractJSON(raw);
