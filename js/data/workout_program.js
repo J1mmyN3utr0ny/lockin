@@ -9,8 +9,11 @@
 export const gymmyApp = {
   name: "Gymmy",
   package: "com.yaniv.gymmy",
-  // Launches the installed Gymmy app from the PWA on Android.
-  intentUrl: "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.yaniv.gymmy;end"
+  // Launches the installed Gymmy app from the PWA on Android. Chrome's intent:// syntax
+  // (developer.chrome.com/docs/multidevice/android/intents) requires the double slash even
+  // with no host — "intent:#Intent;...;end" (single colon, no host) is NOT valid and silently
+  // does nothing when clicked. That was the bug: this used to be missing the "//".
+  intentUrl: "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.yaniv.gymmy;end"
 };
 
 export const philosophy = {
