@@ -163,7 +163,7 @@ export default {
       <div class="card" style="border-color:rgba(52,211,153,.45); background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card))">
         <div class="row between">
           <b>🏋️ Gymmy runs the gym</b>
-          ${onAndroid ? `<a class="btn sm primary" href="${gymmyApp.intentUrl}">Open Gymmy ↗</a>` : `<span class="tag">on your phone</span>`}
+          ${onAndroid ? `<button class="btn sm primary" id="open-gymmy">Open Gymmy ↗</button>` : `<span class="tag">on your phone</span>`}
         </div>
         <p class="small muted" style="margin:6px 0 8px">Sets are logged <b>in Gymmy</b> — start today's plan there (the Day A–F templates ARE this program). Finishing a session syncs it here and ticks today's gym block by itself. This tab is home base: what to do, and what to beat.</p>
         <div class="row wrap" style="gap:6px">
@@ -222,6 +222,25 @@ export default {
 
     view.querySelectorAll("[data-day]").forEach((b) =>
       b.addEventListener("click", () => { viewDayId = b.dataset.day; refresh(); }));
+
+    const openGymmy = view.querySelector("#open-gymmy");
+    if (openGymmy) openGymmy.addEventListener("click", () => {
+      // A static <a href="intent://…"> is the textbook approach, but some Android
+      // WebView/PWA shells resolve intent-scheme navigation more reliably when it's
+      // triggered as an explicit location assignment INSIDE the click's user gesture,
+      // rather than via the anchor's default-action navigation. Try that first.
+      window.location.href = gymmyApp.intentUrl;
+      // Diagnostic: if the OS actually launched Gymmy, this tab backgrounds (or the
+      // page starts unloading) almost immediately. If we're still here and visible
+      // after a beat, the intent was NOT picked up — tell the user plainly instead
+      // of leaving a silent dead click.
+      const t0 = Date.now();
+      setTimeout(() => {
+        if (document.visibilityState === "visible" && Date.now() - t0 < 3000) {
+          toast("Gymmy didn't open — make sure it's installed on this device.");
+        }
+      }, 1200);
+    });
 
     const adj = view.querySelector("#wt-adjust");
     if (adj) adj.addEventListener("click", () => adjustWorkout(day, key));
