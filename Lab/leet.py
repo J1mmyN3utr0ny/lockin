@@ -325,6 +325,27 @@ PROBLEMS = [
     },
 ]
 
+# Fold in the large expanded test suites (leet_tests.py, generated from reference solutions).
+# A partial solution that only passes the two textbook examples now fails the edge cases
+# (empty input, single element, all-duplicates, negatives, no-solution, boundaries). We DEDUPE
+# by the args signature so the original example cases are not repeated, and keep the originals
+# first so the examples the user just read are the first tests they see.
+try:
+    from leet_tests import EXTRA_TESTS
+except Exception:
+    EXTRA_TESTS = {}
+
+for _p in PROBLEMS:
+    _extra = EXTRA_TESTS.get(_p["id"])
+    if not _extra:
+        continue
+    _seen = {repr(_t["args"]) for _t in _p["tests"]}
+    for _t in _extra:
+        _sig = repr(_t["args"])
+        if _sig not in _seen:
+            _p["tests"].append(_t)
+            _seen.add(_sig)
+
 BY_ID = {p["id"]: p for p in PROBLEMS}
 
 
