@@ -4,7 +4,6 @@ import { $, $$, esc, toast, openModal, closeModal, confirmModal, confetti, buzz 
 import * as AI from "./ai.js";
 import * as Lab from "./lab.js";
 
-import { autoBuildTick } from "./modules/lesson_gen.js";
 import today from "./modules/today.js";
 import physique from "./modules/physique.js";
 import diet from "./modules/diet.js";
@@ -338,9 +337,9 @@ function boot() {
   onboard();
   Lab.startAppSync(); // keep phone and PC in step through the Lab hub
 
-  // Quietly grow the Learn hub: shortly after launch (throttled inside), the AI builds
-  // one lesson for whichever track is emptiest — no clicks needed, no interruptions.
-  setTimeout(() => { autoBuildTick(); }, 6000);
+  // Lesson generation lives in the LockIn Lab now (desktop), which builds one deep lesson per
+  // hour for the emptiest track. The phone is the commander — it directs the schedule and
+  // reports Lab progress; it no longer builds or hosts new lessons itself.
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

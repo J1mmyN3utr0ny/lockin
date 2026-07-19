@@ -6,7 +6,7 @@ import * as S from "../state.js";
 import { esc, refresh, toast, confetti, buzz } from "../ui.js";
 import { mdLite, openTutor } from "../ai.js";
 import { lessonTracks, lessons } from "../data/lessons_content.js";
-import { openGenerator, deleteCustomLesson, genStatus } from "./lesson_gen.js";
+import { deleteCustomLesson } from "./lesson_gen.js";
 
 let openId = null;                 // currently open lesson
 const picks = {};                  // `${lessonId}:${qi}` -> chosen option index (session only)
@@ -142,42 +142,27 @@ export default {
     const all = allLessons();
     const total = all.length;
     const done = all.filter((l) => isDone(l.id)).length;
-    const gen = genStatus();
     view.innerHTML = `
       <div class="card" style="border-color:rgba(79,140,255,.45); background:linear-gradient(180deg,rgba(79,140,255,.10),var(--card))">
         <b class="emoji">🖥 The real lessons are in LockIn Lab</b>
-        <p class="small muted" style="margin:6px 0 0">Every track's full curriculum — long lessons, ten graded checks each, code you actually run, and
-        the daily LeetCode — lives in the <b>Lab on your desktop</b>, and it writes itself a new lesson every hour.
+        <p class="small muted" style="margin:6px 0 0">Every track's full curriculum — long, deep lessons with ten graded checks each, code you actually run, and
+        the daily LeetCode — lives in the <b>Lab on your desktop</b>, which now writes itself a fresh, full-length lesson every hour.
         <b>Study there.</b></p>
-        <p class="small dim" style="margin:6px 0 0">What's below is the phone-sized reader: fine for a bus ride or a queue, not a substitute for a session at your desk.</p>
+        <p class="small dim" style="margin:6px 0 0">What's below is the phone-sized reader: fine for a bus ride or a queue, not a substitute for a session at your desk. New lessons are no longer built on the phone.</p>
       </div>
       <div class="card tight">
         <b class="emoji">📖 Pocket reader</b>
         <p class="small muted" style="margin:6px 0 0">Illustrated lessons with diagrams, animations and videos. ${done}/${total} done.</p>
       </div>
-      ${gen ? `
-      <div class="card tight" style="border-color:rgba(167,139,250,.45); background:linear-gradient(180deg,rgba(167,139,250,.1),var(--card))">
-        <div class="row" style="gap:10px; align-items:center">
-          <span class="spin" style="font-size:16px">⚙️</span>
-          <div class="small"><b>Building "${esc(gen.topic)}"</b> (${esc(gen.trackName)}) — ${esc(gen.label)}…
-            <span class="dim">runs in the background; closing anything won't stop it.</span></div>
-        </div>
-      </div>` : ""}
       ${lessonTracks.map((t) => {
         const ls = inTrack(t.id);
+        if (!ls.length) return "";  // empty tracks are filled in the Lab, not here
         return `
         <div class="section-title" style="margin-top:14px">${t.icon} ${esc(t.name)} — <span style="text-transform:none;letter-spacing:0;font-weight:600">${esc(t.blurb)}</span></div>
         <div class="lcards">
           ${ls.map(lessonCard).join("")}
-          <button class="lcard lcard-new" data-gen="${t.id}">
-            <div class="lcard-top"><b>➕ New AI lesson</b><span class="pill">🤖</span></div>
-            <div class="small muted">${ls.length ? "Grow this track" : "This track is empty — generate its first lesson"} with your Gemini key.</div>
-          </button>
         </div>`;
-      }).join("")}
-      <p class="small dim center" style="margin-top:16px">AI lessons are built in stages (outline → sections → quiz → fact-check) and validated at every step.</p>`;
+      }).join("")}`;
     view.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => { openId = b.dataset.open; window.scrollTo(0, 0); refresh(); }));
-    view.querySelectorAll("[data-gen]").forEach((b) => b.addEventListener("click", () =>
-      openGenerator(b.dataset.gen, (lesson) => { openId = lesson.id; window.scrollTo(0, 0); refresh(); })));
   },
 };

@@ -61,14 +61,20 @@ DIFF_COL = {"Easy": C["good"], "Medium": C["warn"], "Hard": C["bad"]}
 _key_ix = [0]  # rotates on 429 so later calls start from the key that still has quota
 
 
-def gemini(api_key, system, user, temperature=0.6):
+def gemini(api_key, system, user, temperature=0.6, key_start=None):
     """Call Gemini. `api_key` may be one key or a list — extra keys are BACKUPS that take
-    over the moment the active one is rate-limited (429), same as the phone app's ai.js."""
+    over the moment the active one is rate-limited (429), same as the phone app's ai.js.
+
+    `key_start` lets a caller choose which key to try FIRST (still falling back to the others),
+    without disturbing the sticky global rotation. The hourly lesson builder passes an
+    incrementing counter here so its many staged calls alternate keys evenly, spreading the
+    per-key request rate across both keys instead of hammering one until it 429s."""
     keys = [api_key] if isinstance(api_key, str) else list(api_key or [])
     keys = [k for k in keys if k and len(k.strip()) >= 20]
     if not keys:
         raise RuntimeError("No API key set — paste a free Gemini key in ⚙ Settings "
                            "(or in the phone app; it syncs over through the hub).")
+    base = _key_ix[0] if key_start is None else (key_start % len(keys))
     last_err = None
     for mi in range(_model_ix[0], len(MODELS)):
         model = MODELS[mi]
@@ -86,7 +92,7 @@ def gemini(api_key, system, user, temperature=0.6):
         payload = json.dumps(body).encode("utf-8")
         next_model = False
         for ki in range(len(keys)):
-            key = keys[(_key_ix[0] + ki) % len(keys)]
+            key = keys[(base + ki) % len(keys)]
             req = urllib.request.Request(ENDPOINT % (model, urllib.parse.quote(key)),
                                         data=payload,
                                         headers={"Content-Type": "application/json"}, method="POST")
@@ -118,7 +124,10 @@ def gemini(api_key, system, user, temperature=0.6):
                 next_model = True
                 break
             _model_ix[0] = mi
-            _key_ix[0] = (_key_ix[0] + ki) % len(keys)  # remember which key still has quota
+            if key_start is None:
+                _key_ix[0] = (base + ki) % len(keys)  # sticky: remember which key still has quota
+            # when key_start is given (the round-robin builder) we deliberately do NOT pin the
+            # global to this key, so the next staged call is free to use the other one.
             return text
         # all keys 429'd on this model (quotas are per-model — the next may have room),
         # or the model itself failed (next_model) — either way keep walking the chain.
@@ -1096,12 +1105,14 @@ class Lab(tk.Tk):
 
     # ---- structured (JSON) generation: practice quizzes & the daily AI lesson ----
 
-    def _json_call(self, key, system, user, validate):
+    def _json_call(self, key, system, user, validate, key_start=None):
         """Blocking helper for worker threads: ask → parse → validate, one retry that
-        echoes the exact problem back, raise if it still fails. Nothing partial escapes."""
+        echoes the exact problem back, raise if it still fails. Nothing partial escapes.
+        `key_start`, when given, picks which API key this call starts on (see gemini) so the
+        background builder can spread its staged calls evenly across both keys."""
         prompt = user
         for attempt in range(2):
-            raw = gemini(key, system, prompt, temperature=0.4)
+            raw = gemini(key, system, prompt, temperature=0.4, key_start=key_start)
             try:
                 parsed = extract_json(raw)
                 problem = validate(parsed)
@@ -1479,44 +1490,76 @@ class Lab(tk.Tk):
         self._autogen_busy = True
         self._set_status()
 
+        # Round-robin counter: each staged call bumps it, so consecutive calls start on alternating
+        # keys and the ~6 calls of one lesson split evenly across both keys instead of hammering one.
+        kc = [self.state.get("autoGen", {}).get("keyRR", 0)]
+
+        def staged(system, user, validate):
+            time.sleep(4)  # free-tier pacing between staged calls
+            out = self._json_call(keys, system, user, validate, key_start=kc[0])
+            kc[0] += 1
+            return out
+
         def work():
             try:
                 outline = self._json_call(keys, prompts.AUTO_OUTLINE_SYS,
                     "Track: %s. Level: advanced-beginner (reads code well; new to this track's depths).\n"
                     "Existing lesson titles (pick a genuinely NEW topic):\n%s"
                     % (tname, "\n".join("- " + t for t in known)),
-                    self._valid_auto_outline)
-                time.sleep(4)  # free-tier pacing between staged calls
-                secs = self._json_call(keys, prompts.AUTO_SECTIONS_SYS,
-                    "Lesson: %s (track %s).\nOutlined sections:\n%s\nWrite each section's body."
-                    % (outline["title"], tname,
-                       "\n".join("%d. %s — %s" % (i + 1, s["h"], s["goal"])
-                                 for i, s in enumerate(outline["sections"]))),
-                    self._valid_auto_sections)
-                time.sleep(4)
-                full = "\n\n".join("%s\n%s" % (s["h"], s["body"]) for s in secs["sections"])
-                quiz = self._json_call(keys, prompts.AUTO_QUIZ_SYS,
-                    "LESSON TEXT:\n<<<\n%s\n>>>\nWrite the 6-question graded check." % full,
-                    self._valid_auto_quiz)
+                    self._valid_auto_outline, key_start=kc[0])
+                kc[0] += 1
+                heads = outline["sections"]  # 6 headings
+                # Write the six bodies two at a time — smaller calls stay under the free-tier token
+                # budget and are far less likely to truncate a long section mid-sentence.
+                bodies = []
+                outline_ctx = "\n".join("%d. %s — %s" % (i + 1, s["h"], s["goal"]) for i, s in enumerate(heads))
+                for a in range(0, len(heads), 2):
+                    batch = heads[a:a + 2]
+                    want = [s["h"] for s in batch]
+                    res = staged(prompts.AUTO_SECTIONS_SYS,
+                        "Lesson: %s (track %s).\nFull outline for context:\n%s\n\n"
+                        "Write the body for ONLY these headings, in order:\n%s"
+                        % (outline["title"], tname, outline_ctx, "\n".join("- " + h for h in want)),
+                        lambda o, want=want: self._valid_auto_section_batch(o, want))
+                    bodies.extend(res["sections"])
+                sections = [{"h": b["h"], "body": b["body"]} for b in bodies]
+                full = "\n\n".join("%s\n%s" % (s["h"], s["body"]) for s in sections)
+                # Ten graded checks, in two halves so each call is small and the two batches can
+                # target different difficulty bands without overlapping.
+                quiz = []
+                quiz += staged(prompts.AUTO_QUIZ_SYS,
+                    "LESSON TEXT:\n<<<\n%s\n>>>\nWrite EXACTLY 5 questions in the EASIER band: "
+                    "2 that apply the idea and 3 that require reading/tracing code or output "
+                    "(put the snippet in the code field)." % full,
+                    lambda o: self._valid_auto_quiz(o, 5))["quiz"]
+                quiz += staged(prompts.AUTO_QUIZ_SYS,
+                    "LESSON TEXT:\n<<<\n%s\n>>>\nWrite EXACTLY 5 HARDER questions, different from the "
+                    "obvious ones: realistic debugging scenarios and edge/transfer cases that "
+                    "separate real understanding from memorisation." % full,
+                    lambda o: self._valid_auto_quiz(o, 5))["quiz"]
                 lesson = {
                     "id": "gen-%s-%d" % (tid, int(time.time())),
                     "title": outline["title"],
                     "date": datetime.date.today().isoformat(),
-                    "minutes": 25,
-                    "sections": secs["sections"],
-                    "quiz": quiz["quiz"],
+                    "minutes": 30,
+                    "sections": sections,
+                    "quiz": quiz,
                 }
-                self.after(0, lambda: self._autogen_done(tid, lesson))
+                self.after(0, lambda: self._autogen_done(tid, lesson, kc[0]))
             except Exception:
                 # Passive feature: a failed hour is a non-event. Never interrupt the user with it.
-                self.after(0, lambda: self._autogen_done(tid, None))
+                # Still advance the key counter so the next attempt starts on the other key.
+                self.after(0, lambda: self._autogen_done(tid, None, kc[0]))
         threading.Thread(target=work, daemon=True).start()
 
-    def _autogen_done(self, tid, lesson):
+    def _autogen_done(self, tid, lesson, key_rr=None):
         self._autogen_busy = False
+        ag = self.state.setdefault("autoGen", {})
+        if key_rr is not None:
+            ag["keyRR"] = key_rr % 2  # persist the round-robin position across lessons/runs
         if lesson:
             self.state.setdefault("genLessons", {}).setdefault(tid, []).append(lesson)
-            self.state.setdefault("autoGen", {}).setdefault("byTrack", {})[tid] = time.time()
+            ag.setdefault("byTrack", {})[tid] = time.time()
             self.courses[tid]["lessons"].append(self._generated_to_lesson(lesson))
             self._save_state()
             self._add_lesson_node(tid)
@@ -1541,28 +1584,30 @@ class Lab(tk.Tk):
         if not isinstance(o, dict) or not isinstance(o.get("title"), str) or not (4 <= len(o["title"]) <= 90):
             return "title must be a 4-90 char string"
         secs = o.get("sections")
-        if not isinstance(secs, list) or len(secs) != 5:
-            return "sections must be exactly 5"
+        if not isinstance(secs, list) or len(secs) != 6:
+            return "sections must be exactly 6"
         for s in secs:
             if not isinstance(s, dict) or not isinstance(s.get("h"), str) or not isinstance(s.get("goal"), str):
                 return "every section needs h and goal strings"
         return None
 
-    def _valid_auto_sections(self, o):
+    def _valid_auto_section_batch(self, o, want):
+        """Validate one batch of section bodies — the headings requested, in order, each a
+        substantial 900-1600-char body (a hair of tolerance on each end for the model)."""
         secs = o.get("sections") if isinstance(o, dict) else None
-        if not isinstance(secs, list) or len(secs) != 5:
-            return "sections must be exactly 5"
+        if not isinstance(secs, list) or len(secs) != len(want):
+            return "expected exactly %d section bodies" % len(want)
         for s in secs:
             if not isinstance(s, dict) or not isinstance(s.get("h"), str) or not isinstance(s.get("body"), str):
                 return "every section needs h and body"
-            if not (900 <= len(s["body"]) <= 2600):
-                return "every body must be 900-2600 chars (200-320 words) of teaching text"
+            if not (850 <= len(s["body"]) <= 1700):
+                return "every body must be ~900-1600 chars of teaching text"
         return None
 
-    def _valid_auto_quiz(self, o):
+    def _valid_auto_quiz(self, o, n=5):
         qs = o.get("quiz") if isinstance(o, dict) else None
-        if not isinstance(qs, list) or len(qs) != 6:
-            return "quiz must be exactly 6 questions"
+        if not isinstance(qs, list) or len(qs) != n:
+            return "quiz must be exactly %d questions" % n
         for q in qs:
             err = self._valid_quiz_item(q)
             if err:
