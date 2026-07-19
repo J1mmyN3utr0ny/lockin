@@ -42,20 +42,28 @@ class CodeEditor(tk.Frame):
         self.text.configure(yscrollcommand=self._on_scroll, xscrollcommand=lambda *a: None)
         self._scrollbar = vs
 
+        # a subtle full-width highlight on the line the caret is on — a calm "you are here"
+        self.text.tag_configure("curline", background=colors.get("curline", colors["editor"]))
+        self.text.tag_lower("curline")
         for name, col in (("kw", colors["kw"]), ("bi", colors["bi"]), ("str", colors["str"]),
                           ("com", colors["com"]), ("num", colors["num"]), ("fn", colors["fn"])):
             self.text.tag_configure(name, foreground=col)
-        # indentation guides: a faint mark at each 4-space stop, stacking into vertical guide lines
-        self.text.tag_configure("guide", background="#1b2740")
+        # indentation guides: one faint char-cell at each 4-space stop, drawn on the leading
+        # whitespace only (never behind code) and continued through blank lines so they read as
+        # clean, continuous vertical rules rather than the old disconnected blocks.
+        self.text.tag_configure("guide", foreground=colors.get("guide", "#172131"),
+                                background=colors.get("guide", "#172131"))
         self.text.tag_lower("guide")
+        self.text.tag_lower("curline", "guide")  # curline sits below the guides
 
-        self.text.bind("<KeyRelease>", self._changed)
+        self.text.bind("<KeyRelease>", self._changed)  # _changed calls _cursor -> _draw_curline
         self.text.bind("<ButtonRelease>", self._cursor)
         self.text.bind("<Tab>", self._tab)
         self.text.bind("<Return>", self._enter)
         self.text.bind("<MouseWheel>", lambda e: self.after(1, self._draw_gutter))
         self._hl_job = None
         self._draw_gutter()
+        self._draw_curline()
 
     # ---- scrolling: keep gutter in lockstep with the code ----
     def _yview(self, *args):
@@ -75,6 +83,7 @@ class CodeEditor(tk.Frame):
         self.text.mark_set("insert", "1.0")
         self._draw_gutter()
         self._draw_guides()
+        self._draw_curline()
         self._highlight()
 
     def get_code(self):
@@ -93,9 +102,17 @@ class CodeEditor(tk.Frame):
         self._hl_job = self.after(140, self._highlight)
 
     def _cursor(self, _e=None):
+        self._draw_curline()
         if self.on_cursor:
             line, col = self.text.index("insert").split(".")
             self.on_cursor(int(line), int(col) + 1)
+
+    def _draw_curline(self):
+        """Highlight the caret's line (subtle, full width)."""
+        t = self.text
+        t.tag_remove("curline", "1.0", "end")
+        ln = t.index("insert").split(".")[0]
+        t.tag_add("curline", "%s.0" % ln, "%s.0+1lines" % ln)
 
     def _tab(self, _e):
         self.text.insert("insert", "    ")
@@ -115,19 +132,32 @@ class CodeEditor(tk.Frame):
         return "break"
 
     def _draw_guides(self):
-        """Faint vertical marks at each 4-space indentation stop — they stack into guide lines."""
+        """Indent guides at each 4-space stop, continued through blank lines so a block's guides
+        form an unbroken vertical rule. A blank line inherits the indent of the next code line
+        (the way real IDEs carry guides across the gaps inside a function)."""
         t = self.text
         t.tag_remove("guide", "1.0", "end")
         total = int(t.index("end-1c").split(".")[0])
-        for ln in range(1, total + 1):
-            line = t.get("%d.0" % ln, "%d.end" % ln)
-            stripped = line.lstrip(" ")
-            if not stripped:
-                continue  # blank line — no guide
-            levels = (len(line) - len(stripped)) // 4
-            for lv in range(levels):
+        raw = [t.get("%d.0" % ln, "%d.end" % ln) for ln in range(1, total + 1)]
+        # level per line; blanks get the level of the NEXT non-blank line (0 if none follows)
+        levels = [0] * total
+        next_level = 0
+        for i in range(total - 1, -1, -1):
+            stripped = raw[i].lstrip(" ")
+            if stripped:
+                next_level = (len(raw[i]) - len(stripped)) // 4
+                levels[i] = next_level
+            else:
+                levels[i] = next_level  # carry the block's indent through the gap
+        for i, lvl in enumerate(levels):
+            ln = i + 1
+            line_len = len(raw[i])
+            for lv in range(lvl):
                 col = lv * 4
-                t.tag_add("guide", "%d.%d" % (ln, col), "%d.%d" % (ln, col + 1))
+                # only paint where there is actually whitespace (never behind code); on a blank
+                # line the cells do not exist, so guard the column against the line length
+                if col <= line_len:
+                    t.tag_add("guide", "%d.%d" % (ln, col), "%d.%d" % (ln, col + 1))
 
     def _draw_gutter(self):
         n = int(self.text.index("end-1c").split(".")[0])

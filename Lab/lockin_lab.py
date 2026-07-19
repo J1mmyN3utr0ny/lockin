@@ -43,18 +43,25 @@ MODELS = ["gemini-3.5-flash", "gemini-2.5-flash"]
 _model_ix = [0]
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"
 
+# Palette — "Deep slate". A calm dark IDE theme: the chrome (toolbar, sidebar, panels) recedes
+# on a cool near-black elevation ladder so the CODE and lesson text are the focus. One accent blue
+# and one cyan, used with restraint; the Material-family syntax colors are kept (they read well over
+# hours). Each surface is a perceptible-but-gentle step lighter than the one below it:
+#   bg(app) < editor(code) < panel(chrome) < card(lesson) < card2(controls),  line = hairline border.
 C = {
-    "bg": "#0d1117", "panel": "#0f1522", "editor": "#0a1120", "card": "#151d2b", "card2": "#1b2536",
-    "line": "#26324a", "fg": "#e8edf6", "mut": "#90a0bb", "dim": "#64748b", "acc": "#4f8cff",
-    "acc2": "#22d3ee", "good": "#34d399", "warn": "#fbbf24", "bad": "#f87171", "gold": "#f5c451",
-    "violet": "#a78bfa", "gutterbg": "#0a1120", "gutterfg": "#3b4a63", "caret": "#22d3ee", "sel": "#24406b",
-    "kw": "#c792ea", "bi": "#82aaff", "str": "#c3e88d", "com": "#546e7a", "num": "#f78c6c", "fn": "#ffcb6b",
+    "bg": "#0a0d13", "panel": "#0e131d", "editor": "#0b0f17", "card": "#111826", "card2": "#18202f",
+    "line": "#222c3e", "fg": "#e8edf6", "mut": "#98a5bb", "dim": "#57637b", "acc": "#5b8def",
+    "acc2": "#35d0e8", "good": "#34d399", "warn": "#fbbf24", "bad": "#f87171", "gold": "#f5c451",
+    "violet": "#a78bfa", "gutterbg": "#0b0f17", "gutterfg": "#44506a", "caret": "#35d0e8", "sel": "#203a5e",
+    "guide": "#172131", "curline": "#0f1622", "hover": "#222c40",
+    "kw": "#c792ea", "bi": "#82aaff", "str": "#c3e88d", "com": "#5c6a82", "num": "#f78c6c", "fn": "#ffcb6b",
 }
 MONO = ("Cascadia Mono", 12) if os.name == "nt" else ("DejaVu Sans Mono", 12)
 MONOS = ("Cascadia Mono", 10) if os.name == "nt" else ("DejaVu Sans Mono", 10)
 UI = ("Segoe UI", 10) if os.name == "nt" else ("DejaVu Sans", 10)
 UIB = ("Segoe UI", 10, "bold") if os.name == "nt" else ("DejaVu Sans", 10, "bold")
-H1 = ("Segoe UI", 15, "bold") if os.name == "nt" else ("DejaVu Sans", 15, "bold")
+UIS = ("Segoe UI", 9) if os.name == "nt" else ("DejaVu Sans", 9)
+H1 = ("Segoe UI Semibold", 14) if os.name == "nt" else ("DejaVu Sans", 14, "bold")
 DIFF_COL = {"Easy": C["good"], "Medium": C["warn"], "Hard": C["bad"]}
 
 
@@ -243,14 +250,24 @@ class Lab(tk.Tk):
             s.theme_use("clam")
         except Exception:
             pass
-        s.configure("Treeview", background=C["panel"], fieldbackground=C["panel"], foreground=C["fg"],
-                    rowheight=25, borderwidth=0, font=UI)
-        s.map("Treeview", background=[("selected", C["acc"])], foreground=[("selected", "#fff")])
-        s.configure("TNotebook", background=C["bg"], borderwidth=0)
-        s.configure("TNotebook.Tab", background=C["card2"], foreground=C["mut"], padding=(14, 6), font=UIB)
-        s.map("TNotebook.Tab", background=[("selected", C["editor"])], foreground=[("selected", C["acc2"])])
-        s.configure("TPanedwindow", background=C["bg"])
-        s.configure("Vertical.TScrollbar", background=C["card2"], troughcolor=C["bg"], borderwidth=0, arrowcolor=C["mut"])
+        s.configure("Treeview", background=C["panel"], fieldbackground=C["panel"], foreground=C["mut"],
+                    rowheight=30, borderwidth=0, font=UI)
+        # selection is a soft translucent-feeling band, not a hard bright bar, so long study
+        # sessions stay easy on the eyes; the selected row's text goes full-white for contrast.
+        s.map("Treeview", background=[("selected", C["card2"])], foreground=[("selected", C["fg"])])
+        s.configure("TNotebook", background=C["bg"], borderwidth=0, tabmargins=(6, 4, 6, 0))
+        s.configure("TNotebook.Tab", background=C["bg"], foreground=C["dim"], padding=(16, 7), font=UIB,
+                    borderwidth=0)
+        # active tab lifts to the editor surface with a cyan label — a quiet "you are here"
+        s.map("TNotebook.Tab", background=[("selected", C["editor"])], foreground=[("selected", C["acc2"])],
+              expand=[("selected", (0, 0, 0, 0))])
+        # the paned sashes ARE the drag handles the user wants to keep: give them a visible hairline
+        # color and a comfortable grab width so resizing panes feels deliberate, not accidental.
+        s.configure("TPanedwindow", background=C["line"])
+        s.configure("Sash", sashthickness=6, gripcount=0, background=C["line"], bordercolor=C["line"], lightcolor=C["line"], darkcolor=C["line"])
+        s.configure("Vertical.TScrollbar", background=C["card2"], troughcolor=C["editor"], borderwidth=0,
+                    arrowcolor=C["dim"], relief="flat")
+        s.map("Vertical.TScrollbar", background=[("active", C["hover"])])
         # readable dark combobox (clam defaults to a light field)
         s.configure("TCombobox", fieldbackground=C["card2"], background=C["card2"], foreground=C["fg"],
                     arrowcolor=C["mut"], bordercolor=C["line"], selectbackground=C["card2"], selectforeground=C["fg"])
@@ -260,45 +277,68 @@ class Lab(tk.Tk):
         self.option_add("*TCombobox*Listbox.selectBackground", C["acc"])
 
     def _btn(self, parent, text, cmd, kind="normal"):
-        col = {"normal": (C["card2"], C["fg"]), "primary": (C["acc"], "#fff"),
-               "run": ("#1b4332", C["good"]), "test": (C["acc"], "#fff"), "warn": ("#3a2f10", C["warn"])}
-        bg, fg = col.get(kind, (C["card2"], C["fg"]))
-        b = tk.Button(parent, text=text, command=cmd, bg=bg, fg=fg, activebackground=C["line"],
-                      activeforeground=C["fg"], font=UIB, relief="flat", bd=0, padx=12, pady=6, cursor="hand2")
+        # (base bg, fg, hover bg) per kind. A quiet control set: neutral chips for most actions,
+        # the accent reserved for the primary action, and a calm green/amber for run/warn.
+        col = {"normal": (C["card2"], C["fg"], C["hover"]), "primary": (C["acc"], "#fff", "#7aa4f3"),
+               "run": ("#123a2a", C["good"], "#174a36"), "test": (C["acc"], "#fff", "#7aa4f3"),
+               "warn": ("#33290e", C["warn"], "#443610")}
+        bg, fg, hv = col.get(kind, (C["card2"], C["fg"], C["hover"]))
+        b = tk.Button(parent, text=text, command=cmd, bg=bg, fg=fg, activebackground=hv,
+                      activeforeground=fg, font=UIB, relief="flat", bd=0, padx=13, pady=7, cursor="hand2")
+        # hover lift: brighten on enter, restore on leave (tkinter has no native :hover)
+        b.bind("<Enter>", lambda _e, w=b, h=hv: w.configure(bg=h), add="+")
+        b.bind("<Leave>", lambda _e, w=b, base=bg: w.configure(bg=base), add="+")
         return b
+
+    def _hairline(self, parent, side="top"):
+        """A 1px divider — the quiet structural device that separates the chrome regions."""
+        f = tk.Frame(parent, bg=C["line"], height=1)
+        f.pack(fill="x", side=side)
+        return f
+
+    def _section_label(self, parent, text):
+        """A small uppercase caption that titles a panel (explorer, lesson, tutor)."""
+        return tk.Label(parent, text=text, bg=C["panel"], fg=C["dim"], font=UIS,
+                        anchor="w", padx=14, pady=7)
 
     # -------- layout --------
     def _build(self):
         # toolbar
-        tb = tk.Frame(self, bg=C["panel"], height=46)
+        tb = tk.Frame(self, bg=C["panel"], height=48)
         tb.pack(fill="x", side="top")
+        tb.pack_propagate(False)
         title = "◆ LockIn Lab" if self.mode == "code" else "◆ LockIn Study"
-        tk.Label(tb, text=title, bg=C["panel"], fg=C["acc"], font=H1).pack(side="left", padx=(14, 8))
+        tk.Label(tb, text=title, bg=C["panel"], fg=C["fg"], font=H1).pack(side="left", padx=(16, 14))
         self.lang_var = tk.StringVar(value="python")
         if self.mode == "code":
-            self.run_btn = self._btn(tb, "▶ Run", self.act_run, "run"); self.run_btn.pack(side="left", padx=4, pady=6)
-            self.test_btn = self._btn(tb, "✓ Run Tests", self.act_test, "test"); self.test_btn.pack(side="left", padx=4)
-            self.reset_btn = self._btn(tb, "⟲ Reset", self.act_reset); self.reset_btn.pack(side="left", padx=4)
-            tk.Label(tb, text="lang", bg=C["panel"], fg=C["dim"], font=UI).pack(side="left", padx=(12, 4))
+            self.run_btn = self._btn(tb, "▶  Run", self.act_run, "run"); self.run_btn.pack(side="left", padx=4, pady=8)
+            self.test_btn = self._btn(tb, "✓  Run Tests", self.act_test, "test"); self.test_btn.pack(side="left", padx=4)
+            self.reset_btn = self._btn(tb, "⟲  Reset", self.act_reset); self.reset_btn.pack(side="left", padx=4)
+            tk.Label(tb, text="lang", bg=C["panel"], fg=C["dim"], font=UI).pack(side="left", padx=(14, 5))
             self.lang_menu = ttk.Combobox(tb, textvariable=self.lang_var, values=["python", "c", "csharp", "asm"], width=9, state="readonly")
             self.lang_menu.pack(side="left")
             self.lang_menu.bind("<<ComboboxSelected>>", self._lang_changed)
         else:
             # theory app: the Workbench is graded by AI, not run — so no Run/Tests/lang.
-            self.grade_btn = self._btn(tb, "📝 Grade my answer", self.act_grade, "test"); self.grade_btn.pack(side="left", padx=4, pady=6)
-            self.reset_btn = self._btn(tb, "⟲ Clear", self.act_reset); self.reset_btn.pack(side="left", padx=4)
+            self.grade_btn = self._btn(tb, "📝  Grade my answer", self.act_grade, "test"); self.grade_btn.pack(side="left", padx=4, pady=8)
+            self.reset_btn = self._btn(tb, "⟲  Clear", self.act_reset); self.reset_btn.pack(side="left", padx=4)
             self.run_btn = None; self.test_btn = None
 
-        self._btn(tb, "⚙", self.open_settings).pack(side="right", padx=(4, 12), pady=6)
-        self.ai_dot = tk.Label(tb, text="", bg=C["panel"], font=UI); self.ai_dot.pack(side="right", padx=6)
-        self.panel_btn = self._btn(tb, "▣ Lesson", self.toggle_panel); self.panel_btn.pack(side="right", padx=4)
+        self._btn(tb, "⚙", self.open_settings).pack(side="right", padx=(4, 14), pady=8)
+        self.ai_dot = tk.Label(tb, text="", bg=C["panel"], font=UI); self.ai_dot.pack(side="right", padx=8)
+        self.panel_btn = self._btn(tb, "▣  Lesson", self.toggle_panel); self.panel_btn.pack(side="right", padx=4)
+        self._hairline(self, "top")  # separate the toolbar from the workspace
 
         # main paned: sidebar | center | right
         self.pw = ttk.Panedwindow(self, orient="horizontal")
         self.pw.pack(fill="both", expand=True)
 
         side = tk.Frame(self.pw, bg=C["panel"])
-        self.tree = ttk.Treeview(side, show="tree", selectmode="browse")
+        self._section_label(side, "CURRICULUM" if self.mode == "code" else "TRACKS").pack(fill="x")
+        self._hairline(side, "top")
+        treewrap = tk.Frame(side, bg=C["panel"])
+        treewrap.pack(fill="both", expand=True, padx=4, pady=(4, 6))
+        self.tree = ttk.Treeview(treewrap, show="tree", selectmode="browse")
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
         self.pw.add(side, weight=0)
@@ -310,8 +350,9 @@ class Lab(tk.Tk):
         edwrap = tk.Frame(cpw, bg=C["editor"])
         if self.mode == "theory":
             # the Workbench: where he writes his explanations/answers for AI grading.
-            tk.Label(edwrap, text="  📝 Workbench — write your answer here, then “Grade my answer”",
-                     bg=C["editor"], fg=C["dim"], font=UI, anchor="w").pack(fill="x", pady=(4, 0))
+            tk.Label(edwrap, text="  📝  WORKBENCH — write your answer, then “Grade my answer”",
+                     bg=C["editor"], fg=C["dim"], font=UIS, anchor="w").pack(fill="x", pady=(6, 2))
+            self._hairline(edwrap, "top")
         self.editor = CodeEditor(edwrap, C, MONO, on_cursor=self._cursor)
         self.editor.pack(fill="both", expand=True)
         cpw.add(edwrap, weight=4)
@@ -331,31 +372,35 @@ class Lab(tk.Tk):
         # right: lesson + tutor
         self.right = tk.Frame(self.pw, bg=C["bg"])
         self.pw.add(self.right, weight=2)
+        self._section_label(self.right, "LESSON").pack(fill="x")
+        self._hairline(self.right, "top")
         self.lesson_txt = tk.Text(self.right, bg=C["card"], fg=C["fg"], relief="flat", font=UI, wrap="word",
-                                 padx=14, pady=12, borderwidth=0, height=20)
+                                 padx=16, pady=14, borderwidth=0, height=20, spacing1=1, spacing3=2)
         self.lesson_txt.pack(fill="both", expand=True)
         self._tags(self.lesson_txt)
         self.lesson_txt.configure(state="disabled")
 
-        aibar = tk.Frame(self.right, bg=C["bg"])
+        aibar = tk.Frame(self.right, bg=C["panel"])
+        self._hairline(aibar, "top")
         aibar.pack(fill="x")
-        self._btn(aibar, "💡 Hint", self.act_hint).pack(side="left", padx=4, pady=6)
-        self._btn(aibar, "❔ Ask", self.act_ask).pack(side="left", padx=4)
-        self._btn(aibar, "📖 Explain", self.act_explain).pack(side="left", padx=4)
+        self._btn(aibar, "💡 Hint", self.act_hint).pack(side="left", padx=(6, 3), pady=7)
+        self._btn(aibar, "❔ Ask", self.act_ask).pack(side="left", padx=3)
+        self._btn(aibar, "📖 Explain", self.act_explain).pack(side="left", padx=3)
         if self.mode == "code":
-            self._btn(aibar, "🏗 Guide me", self.act_guide).pack(side="left", padx=4)
-        self._btn(aibar, "➕ AI practice", self.act_practice).pack(side="left", padx=4)
-        self.done_btn = self._btn(aibar, "Mark done", self.act_done, "primary"); self.done_btn.pack(side="right", padx=8)
+            self._btn(aibar, "🏗 Guide", self.act_guide).pack(side="left", padx=3)
+        self._btn(aibar, "➕ Practice", self.act_practice).pack(side="left", padx=3)
+        self.done_btn = self._btn(aibar, "Mark done", self.act_done, "primary"); self.done_btn.pack(side="right", padx=(3, 8))
 
         self.tutor_txt = tk.Text(self.right, bg=C["panel"], fg=C["fg"], relief="flat", font=UI, wrap="word",
-                                padx=12, pady=10, borderwidth=0, height=9)
+                                padx=14, pady=11, borderwidth=0, height=9, spacing1=1, spacing3=2)
         self.tutor_txt.pack(fill="x")
         self._tags(self.tutor_txt)
         self.tutor_txt.configure(state="disabled")
 
-        # status bar
-        self.status = tk.Label(self, text="", bg=C["panel"], fg=C["mut"], font=MONOS, anchor="w", padx=12)
+        # status bar (packed bottommost, then its divider above it)
+        self.status = tk.Label(self, text="", bg=C["panel"], fg=C["mut"], font=MONOS, anchor="w", padx=14, pady=3)
         self.status.pack(fill="x", side="bottom")
+        self._hairline(self, "bottom")
 
     def _console_text(self):
         f = tk.Frame(self.console, bg=C["editor"])
