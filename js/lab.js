@@ -54,6 +54,10 @@ export async function syncNow() {
 export function lastStatus() { return S.getState().lab && S.getState().lab.status; }
 export function lastSyncedAt() { return S.getState().lab && S.getState().lab.syncedAt; }
 
+// Is the real-time link to the desktop Lab up right now? The phone leads with this: it's the
+// difference between "your Lab is running, go work in it" and "your Lab isn't even open".
+export function isLive() { return _sseAlive; }
+
 // ---- app-data sync (phone <-> PC, relayed through the Lab hub) --------------------------------
 // The Lab stores whichever device's state is newest; every device pushes its own edits and pulls
 // the other's. Last-write-wins by state.updatedAt. Connection settings stay per-device.
@@ -88,15 +92,17 @@ function _adopt(remote) {
   return true;
 }
 
+// Always hand the hub's copy to applyRemote — it merges day ticks regardless of clock order and
+// only takes the rest when the remote is genuinely newer. Gating this on "remote is newer" (as it
+// used to) meant a device that had been offline while the other pushed could never contribute its
+// own checkmarks back: they'd sit local forever.
 export async function pullState() {
   const res = await labFetch("/appstate", {});
   if (!res || !res.ok) return false;
   let remote;
   try { remote = await res.json(); } catch (_e) { return false; }
-  if (remote && remote.version !== undefined && (remote.updatedAt || 0) > (S.getState().updatedAt || 0)) {
-    return _adopt(remote);
-  }
-  return false;
+  if (!remote || remote.version === undefined) return false;
+  return _adopt(remote);
 }
 
 // A fresh / not-yet-onboarded device only pulls — it must never overwrite real data on the hub.
@@ -105,14 +111,16 @@ function canPush() {
   return st.settings.onboarded || (st.xp || 0) > 0;
 }
 
-// One cycle: adopt the hub's copy if it's newer, otherwise push ours up. Returns "pulled"/"pushed"/"".
+// One cycle: fold the hub's copy into ours, then push the result back so the hub ends up holding
+// the union. Pushing after a pull is what makes ticks propagate both ways in a single round.
+// Returns "merged"/"pulled"/"pushed"/"".
 export async function syncState() {
   if (!labConfigured()) return "";
   const adopted = await pullState();
-  if (adopted) return "pulled";
-  if (!canPush()) return "";
+  if (!canPush()) return adopted ? "pulled" : "";
   const pushed = await pushState();
-  return pushed ? "pushed" : "";
+  if (pushed) _lastPushed = S.getState().updatedAt || 0;
+  return pushed ? (adopted ? "merged" : "pushed") : (adopted ? "pulled" : "");
 }
 
 // ---- gymmy → LockIn: adopt finished workouts pushed to the hub --------------------------------
@@ -169,8 +177,12 @@ function _onHubEvent(event, data) {
   if (event === "appstate") {
     try {
       const remote = JSON.parse(data);
-      if (remote && remote.version !== undefined && (remote.updatedAt || 0) > (S.getState().updatedAt || 0)) {
-        _lastPushed = remote.updatedAt || 0; // we now match the hub; don't echo it back
+      if (remote && remote.version !== undefined) {
+        // Record the hub's clock BEFORE merging. If the merge contributes nothing, applyRemote
+        // leaves us on that same clock and the push guard stays quiet (no echo). If it DID fold
+        // in ticks the hub lacks, applyRemote stamps "now" — which clears the guard and sends
+        // the union straight back up.
+        _lastPushed = S.sanitizeClock(remote.updatedAt);
         _adopt(remote);
       }
     } catch (_e) {}

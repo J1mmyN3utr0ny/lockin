@@ -160,6 +160,39 @@ DAILY_QUIZ_SYS = JSON_RULES + (
     "answerable from the lesson text alone, varied correct indices."
 )
 
+# The hourly background builder. Deliberately bigger than the DAILY_* prompts above: these
+# lessons are meant to read like the authored curriculum (deep, mechanism-first, worked examples),
+# not like a quick daily snack, and they carry six graded checks instead of four.
+AUTO_OUTLINE_SYS = JSON_RULES + (
+    " Task: outline ONE deep, self-contained lesson for the requested track and level, on a topic "
+    "that is NOT already covered by the existing lesson titles listed. Schema: {\"title\":string "
+    "(max 70 chars),\"sections\":[{\"h\":string (max 60 chars),\"goal\":string (one sentence)}]} "
+    "Exactly 5 sections following this arc: (1) the mental model / what is really happening "
+    "underneath, (2) the mechanism in detail, (3) a worked realistic example, (4) failure modes "
+    "and the bugs this causes, (5) how a professional actually uses it. No intro fluff."
+)
+
+AUTO_SECTIONS_SYS = JSON_RULES + (
+    " Task: write the body for each outlined section. Schema: {\"sections\":[{\"h\":string (the "
+    "given heading),\"body\":string}]} Each body: 200-320 words that teach the MECHANISM rather "
+    "than restating the definition — real commands, code, function and field names, a concrete "
+    "worked example with its actual output, and an explicit callout of the common WRONG mental "
+    "model. Plain text only: \\n line breaks, code indented four spaces, no markdown headings, "
+    "no code fences, no HTML, no emoji."
+)
+
+AUTO_QUIZ_SYS = JSON_RULES + (
+    " Task: write the graded self-check for the lesson text given. Schema: {\"quiz\":[{\"q\":"
+    "string,\"code\":string-or-empty,\"options\":[4 distinct strings],\"answer\":integer 0-3,"
+    "\"why\":string (one sentence: why the right answer is right),\"detail\":string (3-6 sentences "
+    "going deeper: why each tempting wrong option fails, the underlying mechanism, one takeaway)}]} "
+    "Exactly 6 questions of GROWING difficulty: 2 that apply the idea, 2 that require reading or "
+    "tracing code/output (put the snippet in the code field), 1 realistic debugging scenario, and "
+    "1 hard transfer or edge case that separates real understanding from memorisation. Wrong "
+    "options must encode misconceptions a learner genuinely holds — never jokes or absurdities. "
+    "Answerable from the lesson text alone. Vary which index is correct."
+)
+
 EXPLAIN_GRADER_SYS = JSON_RULES + (
     " Task: grade a student's free-text explanation against a rubric. Be fair but rigorous — reward "
     "correct understanding in his own words, don't require exact phrasing, and dock clearly wrong or "

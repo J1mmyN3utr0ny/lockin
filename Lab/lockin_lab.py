@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -28,6 +29,7 @@ from editor import CodeEditor
 from sync import SyncServer
 from leet import daily_problem
 import expansions
+import depth
 try:
     from explain_questions import EXPLAIN_QUESTIONS
 except Exception:
@@ -147,6 +149,12 @@ def extract_json(text):
 #              scored feedback + XP. That graded loop is the theory app's "terminal".
 CODE_TRACKS = ["python", "csharp", "c", "asm", "dsa"]
 THEORY_TRACKS = ["cyber_high", "cyber_low", "linux", "cmd"]
+
+# Background lesson builder: every hour the Lab quietly grows whichever track has the fewest
+# lessons, so the thin corners of the curriculum fill themselves in while you work.
+AUTOGEN_PERIOD_S = 3600          # one new lesson per hour, at most
+AUTOGEN_FIRST_MS = 120 * 1000    # let the app settle before the first attempt
+AUTOGEN_CHECK_MS = 10 * 60 * 1000  # re-check this often (survives the app being closed for a while)
 APP_TITLE = {"code": "LockIn Lab", "theory": "LockIn Study"}
 
 
@@ -161,9 +169,11 @@ class Lab(tk.Tk):
 
         self.courses = content.build_courses()
         self.state = self._load_state()
+        self._merge_generated()  # AI-built lessons become ordinary lessons of their track
         self.current = None
         self.language = "python"
         self._busy = False
+        self._autogen_busy = False
         self._save_job = None
 
         self._style()
@@ -175,11 +185,14 @@ class Lab(tk.Tk):
         self.sync_url = self.sync.start() or "(sync off)"
         self._set_status()
         self._select_default()
+        self.after(AUTOGEN_FIRST_MS, self._autogen_tick)  # start the hourly lesson builder
 
     # -------- state --------
     def _load_state(self):
-        base = {"apiKey": "", "syncPort": 8765, "progress": {}, "solved": {}, "code": {},
-                "capstone": {}, "xp": 0, "history": [], "checks": {}, "activeDays": []}
+        base = {"apiKey": "", "apiKey2": "", "syncPort": 8765, "progress": {}, "solved": {},
+                "code": {}, "capstone": {}, "xp": 0, "history": [], "checks": {}, "activeDays": [],
+                "genLessons": {},                        # trackId -> [AI-built lessons]
+                "autoGen": {"last": 0, "byTrack": {}}}   # hourly builder bookkeeping
         if os.path.exists(STATE_PATH):
             try:
                 base.update(json.load(open(STATE_PATH, encoding="utf-8")))
@@ -390,11 +403,15 @@ class Lab(tk.Tk):
                 tnode = self.tree.insert(cnode, "end", iid="track:" + tid, text="   " + c["title"].split("—")[0].strip())
                 self._track_children(tnode, tid, c)
 
+    def _lesson_label(self, L):
+        """Tree label: ✓ when finished, ✨ for an AI-built lesson, • otherwise."""
+        if self._lesson_done(L["id"]) or self._solved(L["id"]):
+            return "    ✓ %s" % L["title"]
+        return "    %s%s" % ("✨ " if L.get("generated") else "•  ", L["title"])
+
     def _track_children(self, node, tid, course):
         for i, L in enumerate(course["lessons"]):
-            done = self._lesson_done(L["id"]) or self._solved(L["id"])
-            mark = "✓ " if done else "•  "
-            self.tree.insert(node, "end", iid="lesson:%s#%d" % (tid, i), text="    %s%s" % (mark, L["title"]))
+            self.tree.insert(node, "end", iid="lesson:%s#%d" % (tid, i), text=self._lesson_label(L))
         self.tree.insert(node, "end", iid="cap:" + tid, text="    🏁 " + course["capstone"]["name"])
 
     def _refresh_marks(self):
@@ -403,12 +420,10 @@ class Lab(tk.Tk):
             p = content.BY_ID[pid]
             self.tree.item(iid, text="   %s%s" % ("✓ " if self._solved(pid) else "•  ", p["title"]))
         for tid, course in self.courses.items():
-            node = "track:" + tid
             for i, L in enumerate(course["lessons"]):
                 iid = "lesson:%s#%d" % (tid, i)
                 if self.tree.exists(iid):
-                    done = self._lesson_done(L["id"]) or self._solved(L["id"])
-                    self.tree.item(iid, text="    %s%s" % ("✓ " if done else "•  ", L["title"]))
+                    self.tree.item(iid, text=self._lesson_label(L))
 
     def _select_default(self):
         first = "daily" if self.tree.exists("daily") else "dailyai"
@@ -508,6 +523,16 @@ class Lab(tk.Tk):
                     w.insert("end", sec["p"] + "\n", "b")
                 if sec.get("code"):
                     w.insert("end", sec["code"] + "\n", "code")
+            # The real lesson: several thousand words per topic (depth_<track>.py). The original
+            # `read` sections above are the summary; this is the part you actually study from.
+            dp = depth.for_lesson(L["id"], L["title"])
+            if dp:
+                w.insert("end", "\n📖  THE FULL LESSON\n", "h")
+                for sec in dp.get("sections", []):
+                    if sec.get("h"):
+                        w.insert("end", "\n" + sec["h"] + "\n", "hooklbl")
+                    if sec.get("body"):
+                        w.insert("end", sec["body"] + "\n", "b")
             exp = expansions.for_lesson(tid, idx, L["title"])
             if exp:
                 w.insert("end", "\n🔎  DEEP DIVE — beyond the lesson\n", "h")
@@ -574,6 +599,8 @@ class Lab(tk.Tk):
                             w.tag_bind(otag, "<Leave>", lambda _e: w.configure(cursor=""))
                     extag = "exp_%s_%d" % (base, qi)
                     w.insert("end", "     → %s\n" % q["why"], (extag,))
+                    if q.get("detail"):  # the deep bank explains WHY the tempting wrong picks fail
+                        w.insert("end", "       %s\n" % q["detail"], (extag,))
                     w.tag_configure(extag, foreground=C["good"], elide=not solved_q)
                 allpassed = all(checks.get(str(i)) for i in range(n))
                 celtag = "cel_%s" % base
@@ -1216,10 +1243,12 @@ class Lab(tk.Tk):
     # ---- AI keys: the Lab's own + the phone app's, synced through the hub ----
 
     def _api_keys(self):
-        """Every usable Gemini key, in priority order: the Lab's own, then the phone app's
-        primary + backup from the relayed app_state.json (the PWA syncs its keys through the
-        hub, so pasting a key ONCE — on any device — serves every app). De-duplicated."""
-        raw = [self.state.get("apiKey", "")]
+        """Every usable Gemini key, in priority order: the Lab's own primary, its own BACKUP,
+        then the phone app's primary + backup from the relayed app_state.json (the PWA syncs its
+        keys through the hub, so pasting a key ONCE — on any device — serves every app).
+        De-duplicated. gemini() rotates to the next key the moment one returns 429, which is what
+        keeps the hourly background builder alive after the free tier's daily cap is hit."""
+        raw = [self.state.get("apiKey", ""), self.state.get("apiKey2", "")]
         try:
             with open(os.path.join(HERE, "app_state.json"), encoding="utf-8") as f:
                 s = json.load(f).get("settings") or {}
@@ -1377,6 +1406,171 @@ class Lab(tk.Tk):
                 self.after(0, lambda e=e: self._ai_done("⚠ " + str(e)))
         threading.Thread(target=work, daemon=True).start()
 
+    # ---- the hourly background lesson builder ----
+    # Fills in the curriculum's thin corners by itself: once an hour it picks whichever track of
+    # THIS app's mode has the fewest lessons and writes one more for it. Generated lessons are
+    # merged into their track as ordinary lessons, so they get the same tree entry, the same
+    # graded checks, the same "Mark done" gate and the same phone sync as the authored ones.
+
+    def _generated_to_lesson(self, g):
+        """A stored AI lesson in the exact shape the renderer and grader expect."""
+        return {
+            "id": g["id"],
+            "title": g["title"],
+            "minutes": g.get("minutes", 20),
+            "generated": True,
+            "read": [{"h": s.get("h", ""), "p": s.get("body", "")} for s in g.get("sections", [])],
+            "quiz": g.get("quiz") or [],
+        }
+
+    def _merge_generated(self):
+        for tid, items in (self.state.get("genLessons") or {}).items():
+            course = self.courses.get(tid)
+            if not course:
+                continue  # a track that no longer exists — keep the data, just don't show it
+            have = {L["id"] for L in course["lessons"]}
+            for g in items or []:
+                if isinstance(g, dict) and g.get("id") and g["id"] not in have:
+                    course["lessons"].append(self._generated_to_lesson(g))
+
+    def _sparsest_track(self):
+        """The track most in need of material: fewest lessons, ties broken by whichever went
+        longest without being grown (so the builder rotates instead of fixating on one track)."""
+        pool = CODE_TRACKS if self.mode == "code" else THEORY_TRACKS
+        by = (self.state.get("autoGen") or {}).get("byTrack") or {}
+        best = None
+        for tid in pool:
+            course = self.courses.get(tid)
+            if not course:
+                continue
+            rank = (len(course["lessons"]), by.get(tid, 0))
+            if best is None or rank < best[0]:
+                best = (rank, tid)
+        return best[1] if best else None
+
+    def _autogen_tick(self):
+        try:
+            self._maybe_autogen()
+        finally:
+            self.after(AUTOGEN_CHECK_MS, self._autogen_tick)  # keep ticking whatever happens
+
+    def _maybe_autogen(self):
+        if self._busy or self._autogen_busy:
+            return  # never compete with a call the user is waiting on
+        if not self._api_keys():
+            return  # no key configured — stay silent, this is a background nicety
+        ag = self.state.setdefault("autoGen", {"last": 0, "byTrack": {}})
+        if time.time() - (ag.get("last") or 0) < AUTOGEN_PERIOD_S:
+            return
+        tid = self._sparsest_track()
+        if not tid:
+            return
+        # Claim the hour BEFORE the network call: if generation fails we wait for the next slot
+        # rather than hammering the API (and the user's free-tier quota) in a tight retry loop.
+        ag["last"] = time.time()
+        self._save_state()
+        self._autogen(tid)
+
+    def _autogen(self, tid):
+        keys = self._api_keys()
+        course = self.courses[tid]
+        tname = course["title"].split("—")[0].strip()
+        known = [L["title"] for L in course["lessons"]]
+        self._autogen_busy = True
+        self._set_status()
+
+        def work():
+            try:
+                outline = self._json_call(keys, prompts.AUTO_OUTLINE_SYS,
+                    "Track: %s. Level: advanced-beginner (reads code well; new to this track's depths).\n"
+                    "Existing lesson titles (pick a genuinely NEW topic):\n%s"
+                    % (tname, "\n".join("- " + t for t in known)),
+                    self._valid_auto_outline)
+                time.sleep(4)  # free-tier pacing between staged calls
+                secs = self._json_call(keys, prompts.AUTO_SECTIONS_SYS,
+                    "Lesson: %s (track %s).\nOutlined sections:\n%s\nWrite each section's body."
+                    % (outline["title"], tname,
+                       "\n".join("%d. %s — %s" % (i + 1, s["h"], s["goal"])
+                                 for i, s in enumerate(outline["sections"]))),
+                    self._valid_auto_sections)
+                time.sleep(4)
+                full = "\n\n".join("%s\n%s" % (s["h"], s["body"]) for s in secs["sections"])
+                quiz = self._json_call(keys, prompts.AUTO_QUIZ_SYS,
+                    "LESSON TEXT:\n<<<\n%s\n>>>\nWrite the 6-question graded check." % full,
+                    self._valid_auto_quiz)
+                lesson = {
+                    "id": "gen-%s-%d" % (tid, int(time.time())),
+                    "title": outline["title"],
+                    "date": datetime.date.today().isoformat(),
+                    "minutes": 25,
+                    "sections": secs["sections"],
+                    "quiz": quiz["quiz"],
+                }
+                self.after(0, lambda: self._autogen_done(tid, lesson))
+            except Exception:
+                # Passive feature: a failed hour is a non-event. Never interrupt the user with it.
+                self.after(0, lambda: self._autogen_done(tid, None))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _autogen_done(self, tid, lesson):
+        self._autogen_busy = False
+        if lesson:
+            self.state.setdefault("genLessons", {}).setdefault(tid, []).append(lesson)
+            self.state.setdefault("autoGen", {}).setdefault("byTrack", {})[tid] = time.time()
+            self.courses[tid]["lessons"].append(self._generated_to_lesson(lesson))
+            self._save_state()
+            self._add_lesson_node(tid)
+        self._set_status()
+
+    def _add_lesson_node(self, tid):
+        """Show a just-generated lesson in the tree without rebuilding the whole thing
+        (a rebuild would collapse the user's expanded tracks and drop their selection)."""
+        node = "track:" + tid
+        if not self.tree.exists(node):
+            return
+        lessons = self.courses[tid]["lessons"]
+        i = len(lessons) - 1
+        iid = "lesson:%s#%d" % (tid, i)
+        if self.tree.exists(iid):
+            return
+        cap = "cap:" + tid
+        at = self.tree.index(cap) if self.tree.exists(cap) else "end"  # keep the capstone last
+        self.tree.insert(node, at, iid=iid, text="    ✨ %s" % lessons[i]["title"])
+
+    def _valid_auto_outline(self, o):
+        if not isinstance(o, dict) or not isinstance(o.get("title"), str) or not (4 <= len(o["title"]) <= 90):
+            return "title must be a 4-90 char string"
+        secs = o.get("sections")
+        if not isinstance(secs, list) or len(secs) != 5:
+            return "sections must be exactly 5"
+        for s in secs:
+            if not isinstance(s, dict) or not isinstance(s.get("h"), str) or not isinstance(s.get("goal"), str):
+                return "every section needs h and goal strings"
+        return None
+
+    def _valid_auto_sections(self, o):
+        secs = o.get("sections") if isinstance(o, dict) else None
+        if not isinstance(secs, list) or len(secs) != 5:
+            return "sections must be exactly 5"
+        for s in secs:
+            if not isinstance(s, dict) or not isinstance(s.get("h"), str) or not isinstance(s.get("body"), str):
+                return "every section needs h and body"
+            if not (900 <= len(s["body"]) <= 2600):
+                return "every body must be 900-2600 chars (200-320 words) of teaching text"
+        return None
+
+    def _valid_auto_quiz(self, o):
+        qs = o.get("quiz") if isinstance(o, dict) else None
+        if not isinstance(qs, list) or len(qs) != 6:
+            return "quiz must be exactly 6 questions"
+        for q in qs:
+            err = self._valid_quiz_item(q)
+            if err:
+                return err
+            if not isinstance(q.get("detail"), str) or len(q["detail"]) < 40:
+                return "every question needs a detail of at least 40 chars"
+        return None
+
     def act_done(self):
         c = self.current
         if not c or c["kind"] != "lesson":
@@ -1426,7 +1620,10 @@ class Lab(tk.Tk):
         self.status.config(text="  %s   |   lang: %s   |   ⚡ XP %d%s   |   solved %d   |   phone sync: %s"
                            % (cursor, self.lang_var.get(), xp, fire, solved, getattr(self, "sync_url", "…")))
         ok = bool(self._api_keys())
-        self.ai_dot.config(text="● tutor" if ok else "○ tutor", fg=C["good"] if ok else C["warn"])
+        if getattr(self, "_autogen_busy", False):
+            self.ai_dot.config(text="✨ writing…", fg=C["violet"])  # the hourly builder is working
+        else:
+            self.ai_dot.config(text="● tutor" if ok else "○ tutor", fg=C["good"] if ok else C["warn"])
 
     def toggle_panel(self):
         if self.right in self.pw.panes() or str(self.right) in self.pw.panes():
@@ -1458,16 +1655,27 @@ class Lab(tk.Tk):
                  bg=C["bg"], fg=C["mut"], font=UI, wraplength=430, justify="left").pack(padx=18, anchor="w")
         e = tk.Entry(win, width=56, bg=C["card"], fg=C["fg"], insertbackground=C["fg"], font=MONOS, relief="flat", show="•")
         e.pack(padx=18, pady=10); e.insert(0, self.state.get("apiKey", ""))
+        tk.Label(win, text="🔑 Backup key (used automatically when the first one hits its rate limit)",
+                 bg=C["bg"], fg=C["fg"], font=UIB).pack(padx=18, pady=(6, 4), anchor="w")
+        tk.Label(win, text="Make a second key on another Google account. The hourly lesson builder runs off "
+                 "these — with only one key it stops for the day as soon as the free tier is spent.",
+                 bg=C["bg"], fg=C["mut"], font=UI, wraplength=430, justify="left").pack(padx=18, anchor="w")
+        e2 = tk.Entry(win, width=56, bg=C["card"], fg=C["fg"], insertbackground=C["fg"], font=MONOS, relief="flat", show="•")
+        e2.pack(padx=18, pady=10); e2.insert(0, self.state.get("apiKey2", ""))
         st = tk.Label(win, text="", bg=C["bg"], font=UI); st.pack(padx=18, anchor="w")
 
         def save():
-            self.state["apiKey"] = e.get().strip(); self._save_state(); self._set_status(); st.config(text="Saved.", fg=C["good"])
+            self.state["apiKey"] = e.get().strip(); self.state["apiKey2"] = e2.get().strip()
+            self._save_state(); self._set_status(); st.config(text="Saved.", fg=C["good"])
 
         def test():
-            self.state["apiKey"] = e.get().strip(); self._save_state(); self._set_status()
+            self.state["apiKey"] = e.get().strip(); self.state["apiKey2"] = e2.get().strip()
+            self._save_state(); self._set_status()
             st.config(text="Testing…", fg=C["mut"]); win.update()
             try:
-                gemini(self._api_keys(), "Reply with exactly: OK", "ping", 0); st.config(text="✓ Connected.", fg=C["good"])
+                gemini(self._api_keys(), "Reply with exactly: OK", "ping", 0)
+                st.config(text="✓ Connected (%d key%s available)." % (
+                    len(self._api_keys()), "" if len(self._api_keys()) == 1 else "s"), fg=C["good"])
             except Exception as ex:
                 st.config(text=str(ex), fg=C["bad"])
 

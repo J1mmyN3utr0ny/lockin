@@ -144,9 +144,16 @@ export default {
     const done = all.filter((l) => isDone(l.id)).length;
     const gen = genStatus();
     view.innerHTML = `
-      <div class="card" style="border-color:rgba(34,211,238,.35)">
-        <b class="emoji">📖 Lessons — read & understand</b>
-        <p class="small muted" style="margin:6px 0 0">The theory half: illustrated, in-depth lessons with diagrams, animations and videos. Hands-on coding lives in the <b>Lab</b>. ${done}/${total} done.</p>
+      <div class="card" style="border-color:rgba(79,140,255,.45); background:linear-gradient(180deg,rgba(79,140,255,.10),var(--card))">
+        <b class="emoji">🖥 The real lessons are in LockIn Lab</b>
+        <p class="small muted" style="margin:6px 0 0">Every track's full curriculum — long lessons, ten graded checks each, code you actually run, and
+        the daily LeetCode — lives in the <b>Lab on your desktop</b>, and it writes itself a new lesson every hour.
+        <b>Study there.</b></p>
+        <p class="small dim" style="margin:6px 0 0">What's below is the phone-sized reader: fine for a bus ride or a queue, not a substitute for a session at your desk.</p>
+      </div>
+      <div class="card tight">
+        <b class="emoji">📖 Pocket reader</b>
+        <p class="small muted" style="margin:6px 0 0">Illustrated lessons with diagrams, animations and videos. ${done}/${total} done.</p>
       </div>
       ${gen ? `
       <div class="card tight" style="border-color:rgba(167,139,250,.45); background:linear-gradient(180deg,rgba(167,139,250,.1),var(--card))">

@@ -48,6 +48,8 @@ function defaults() {
     sleep: { logs: {} }, // logs[key] = { sleep:"03:30", wake:"14:00" }
     meals: {}, // meals[key] = { slotId:true }
     days: {}, // days[key] = { blocks:{id:true}, offDay:false, note:"" }
+    tickAt: {}, // tickAt[key][blockId] = ms the tick was last toggled — lets sync merge ticks
+                // per-checkbox instead of letting one device's whole-state push erase the other's.
     dayOrders: {}, // dayOrders[key] = [movable unit ids in the user's chosen day order]
     dayTweaks: {}, // dayTweaks[key] = { shift: mins, skip: [unit ids] } — AI/day adjustments
     customLessons: [], // AI-generated Learn-hub lessons (see modules/lesson_gen.js)
@@ -106,10 +108,35 @@ function migrateToAnchor(st) {
   st.updatedAt = Date.now(); // treat the reset as the newest state so it propagates to the other device
 }
 
+// ---- sync clock hygiene ------------------------------------------------------
+// updatedAt drives last-write-wins. A value from the FUTURE is therefore poison: it wins
+// forever, every device adopts the stale blob carrying it, and — because a real edit then
+// sets updatedAt to a SMALLER number (Date.now()) — the push guard in lab.js decides there's
+// nothing new and the edit never leaves the device. That is exactly how a hand-injected
+// 9999999999999 in the hub's app_state.json silently froze phone->desktop sync: ticks were
+// made, stored locally, and never sent. Never trust a clock we didn't just read ourselves.
+// An impossible clock is demoted to 0 rather than clamped to now: we have no idea when that blob
+// was really written, and clamping to now would promote a stale snapshot to "newest in the system"
+// — turning a stuck sync into active data loss. 0 makes it lose every comparison instead, which is
+// safe now that day ticks merge independently of the clock.
+const CLOCK_SKEW_MS = 5 * 60 * 1000; // tolerate a little honest clock drift between devices
+export function sanitizeClock(ts) {
+  const n = Number(ts);
+  if (!isFinite(n) || n <= 0) return 0;
+  return n > Date.now() + CLOCK_SKEW_MS ? 0 : n;
+}
+
 export function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { state = deepMerge(defaults(), JSON.parse(raw)); migrateToAnchor(state); save(); }
+    if (raw) {
+      state = deepMerge(defaults(), JSON.parse(raw));
+      migrateToAnchor(state);
+      // Heal a device that already swallowed a poisoned clock (it can't sync until we do).
+      const fixed = sanitizeClock(state.updatedAt);
+      if (fixed !== (state.updatedAt || 0)) state.updatedAt = fixed;
+      save();
+    }
   } catch (e) { /* corrupt storage -> fresh defaults */ }
   return state;
 }
@@ -135,18 +162,39 @@ export function updateLocal(mutator) {
 // "localhost", the phone says the PC's LAN IP — they can never be the same value) and Lab snapshot,
 // and does not bump updatedAt — we take the remote's. The Gemini keys DO sync (single user, one
 // pair of keys everywhere) — but an empty remote key never wipes a locally-set one.
+// Day records are ALWAYS merged (see mergeDays) — that part is order-independent, so a device
+// that was offline can never lose its ticks just because the other one pushed more recently.
+// Everything else still follows last-write-wins, and is only taken when the remote really is
+// newer. XP takes the max: it's a monotonic counter, and watching it drop reads as data loss.
+// Returns true if anything actually changed (so callers only repaint when there's news).
 export function applyRemote(remote) {
   if (!remote || typeof remote !== "object" || !remote.settings || remote.version === undefined) return false;
+  const remoteTs = sanitizeClock(remote.updatedAt);
+  const newer = remoteTs > (state.updatedAt || 0);
+  const merged = mergeDays(state, remote);
+  if (!newer && !merged.changed) return false;
+
   const keepLabUrl = state.settings.labUrl;
   const keepKey = state.settings.geminiKey;
   const keepKey2 = state.settings.geminiKey2;
   const keepLab = state.lab;
-  state = deepMerge(defaults(), remote);
-  state.settings.labUrl = keepLabUrl;
-  state.settings.geminiKey = state.settings.geminiKey || keepKey;
-  state.settings.geminiKey2 = state.settings.geminiKey2 || keepKey2;
-  state.lab = keepLab;
-  state.updatedAt = remote.updatedAt || Date.now();
+  const keepXp = state.xp || 0;
+  if (newer) {
+    state = deepMerge(defaults(), remote);
+    state.settings.labUrl = keepLabUrl;
+    state.settings.geminiKey = state.settings.geminiKey || keepKey;
+    state.settings.geminiKey2 = state.settings.geminiKey2 || keepKey2;
+    state.lab = keepLab;
+  }
+  state.days = merged.days;
+  state.tickAt = merged.tickAt;
+  state.xp = Math.max(keepXp, Number(remote.xp) || 0);
+  // If we folded in ticks the hub hasn't seen, we are now the newest copy and must push the union
+  // back. The stamp has to BEAT the blob we just merged, not merely be "now": if the other device's
+  // clock runs even slightly ahead of ours, a plain Date.now() lands behind it and lab.js's push
+  // guard silently swallows the union — the merge would be correct locally and never leave the
+  // device. max(now, remote+1) keeps it honest and guarantees it propagates.
+  state.updatedAt = merged.changed ? Math.max(Date.now(), remoteTs + 1) : (remoteTs || Date.now());
   save();
   emit();
   return true;
@@ -229,6 +277,51 @@ export function logEvent(type, text) {
 export function dayRec(key) {
   if (!state.days[key]) state.days[key] = { blocks: {}, offDay: false, note: "" };
   return state.days[key];
+}
+
+// Tick a block on/off AND stamp when it happened. The stamp is what lets two devices merge
+// their checkboxes (see mergeDays) instead of the newer whole-state blob silently winning.
+const TICK_KEEP_DAYS = 21;
+export function setBlock(dateKey, id, on) {
+  update((st) => {
+    dayRec(dateKey).blocks[id] = on;
+    if (!st.tickAt) st.tickAt = {};
+    (st.tickAt[dateKey] = st.tickAt[dateKey] || {})[id] = Date.now();
+    const cutoff = addDays(todayKey(), -TICK_KEEP_DAYS);
+    for (const k of Object.keys(st.tickAt)) {
+      if (k < cutoff) delete st.tickAt[k]; // ISO keys sort lexicographically = chronologically
+    }
+  });
+}
+
+// Merge two devices' day records checkbox by checkbox.
+// Rule per (date, blockId): whichever side stamped it more recently wins. With no stamp on
+// either side (data written before tickAt existed, or by an older build) a tick WINS over an
+// absence — a checkmark is positive evidence that work happened, while its absence may just
+// mean the other device never heard about it.
+function mergeDays(local, remote) {
+  const lT = local.tickAt || {}, rT = (remote && remote.tickAt) || {};
+  const lD = local.days || {}, rD = (remote && remote.days) || {};
+  const days = {}, tickAt = {};
+  let changed = false; // did WE contribute anything the remote didn't have?
+  for (const d of new Set([...Object.keys(lD), ...Object.keys(rD)])) {
+    const lRec = lD[d], rRec = rD[d];
+    const lB = (lRec && lRec.blocks) || {}, rB = (rRec && rRec.blocks) || {};
+    const blocks = {}, ticks = {};
+    for (const id of new Set([...Object.keys(lB), ...Object.keys(rB)])) {
+      const lTs = (lT[d] || {})[id] || 0, rTs = (rT[d] || {})[id] || 0;
+      const on = (lTs || rTs) ? (lTs >= rTs ? !!lB[id] : !!rB[id]) : (!!lB[id] || !!rB[id]);
+      if (on) blocks[id] = true;
+      if (on !== !!rB[id]) changed = true;
+      const ts = Math.max(lTs, rTs);
+      if (ts) ticks[id] = ts;
+    }
+    const offDay = !!(lRec && lRec.offDay) || !!(rRec && rRec.offDay); // spending a token is a fact too
+    days[d] = { blocks, offDay, note: (rRec && rRec.note) || (lRec && lRec.note) || "" };
+    if (!rRec || offDay !== !!(rRec && rRec.offDay)) changed = true;
+    if (Object.keys(ticks).length) tickAt[d] = ticks;
+  }
+  return { days, tickAt, changed };
 }
 
 // ---- XP & levels ------------------------------------------------------------

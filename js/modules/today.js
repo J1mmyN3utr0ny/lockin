@@ -10,6 +10,65 @@ import { buildDay, taskBlockIds, unitize, placeUnit, applyAiPlan, resetDayOrder,
 import { gemini, hasKey, mdLite, extractJSON } from "../ai.js";
 import { openOffDayFlow, isOffDay } from "./offday.js";
 import { startFocus } from "../focus.js";
+import * as Lab from "../lab.js";
+
+// The phone is the COMMANDER, not the library. These specific blocks are work that happens in
+// LockIn Lab on the desktop — the phone's job is to say when, and to report whether the Lab
+// actually did it. Keyed by block id, NOT by category: the "cyber" category also covers the
+// Shabbat flashcards block, which is genuinely a phone activity and must not send him to his desk.
+const DESK_BLOCKS = new Set(["cyber", "leet", "light", "labreview"]);
+
+// The Lab's own view of today, read off the last synced snapshot.
+function labToday() {
+  const st = Lab.lastStatus();
+  if (!st) return null;
+  const fresh = st.date === S.todayKey(); // a snapshot from yesterday says nothing about today
+  return {
+    live: Lab.isLive(),
+    syncedAt: Lab.lastSyncedAt(),
+    lessonsDone: fresh ? (st.completedTodayCount || 0) : 0,
+    leet: fresh && st.leetToday ? st.leetToday : null,
+    streak: st.streak || 0,
+    lessonsTotal: st.lessonsTotal || 0,
+    allLessonsDone: st.lessonsDone || 0
+  };
+}
+
+// The command card: the phone's status read-out on the desktop Lab. This is deliberately the
+// first thing under the day header — learning lives on the desktop, and the phone points at it.
+function commanderCard() {
+  if (!Lab.labConfigured()) {
+    return `
+      <div class="card tight" style="border-color:rgba(79,140,255,.45); background:linear-gradient(180deg,rgba(79,140,255,.10),var(--card))">
+        <b>🖥 LockIn Lab — not linked</b>
+        <div class="small muted" style="margin-top:2px">Your lessons, code and LeetCode live in the Lab on your PC.
+        Add its address in ⚙ Settings → Lab so this phone can direct you to it.</div>
+      </div>`;
+  }
+  const L = labToday();
+  const dot = L && L.live
+    ? `<span class="pill" style="background:rgba(52,211,153,.18); color:var(--good)">● live</span>`
+    : `<span class="pill" style="background:rgba(148,163,184,.16); color:var(--muted)">○ not running</span>`;
+  const seen = L && L.syncedAt
+    ? new Date(L.syncedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    : "never";
+  const bits = [];
+  if (L) {
+    if (L.leet) bits.push(L.leet.solved ? "⭐ daily LeetCode ✓" : "⭐ daily LeetCode still open");
+    bits.push(`${L.lessonsDone} finished in the Lab today`);
+    if (L.streak) bits.push(`🔥 ${L.streak}-day Lab streak`);
+  }
+  return `
+    <div class="card tight" style="border-color:rgba(79,140,255,.45); background:linear-gradient(180deg,rgba(79,140,255,.10),var(--card))">
+      <div class="row between">
+        <b>🖥 LockIn Lab</b>${dot}
+      </div>
+      <div class="small muted" style="margin-top:2px">
+        ${bits.length ? esc(bits.join(" · ")) : "No Lab activity synced yet today."}
+        <br><span class="dim">Last heard from the Lab at ${esc(seen)}. This phone runs your schedule — the Lab is where you learn.</span>
+      </div>
+    </div>`;
+}
 
 const CAT = {
   sleep: { emoji: "🌙", color: "#8b5cf6" }, food: { emoji: "🍽️", color: "#f59e0b" },
@@ -28,12 +87,10 @@ let lastTick = null; // { id, t } — so ONLY the newest checkmark plays the pop
 function justTicked(id) { return !!(lastTick && lastTick.id === id && Date.now() - lastTick.t < 800); }
 
 function toggle(dateKey, id, taskIds, celebrate = true) {
-  let nowOn = false;
-  S.update(() => {
-    const rec = S.dayRec(dateKey);
-    nowOn = !rec.blocks[id];
-    rec.blocks[id] = nowOn;
-  });
+  // setBlock (not a raw update) so the tick carries a timestamp — that's what lets the phone's
+  // checkmarks survive a merge with whatever the desktop last pushed to the hub.
+  const nowOn = !S.dayRec(dateKey).blocks[id];
+  S.setBlock(dateKey, id, nowOn);
   S.addXP(nowOn ? 10 : -10);
   lastTick = nowOn ? { id, t: Date.now() } : null;
   if (nowOn) {
@@ -335,8 +392,14 @@ function aiPlanDay(dateKey) {
 function blocksHTML(day, rec, nowI, unitByBlock) {
   const focusable = new Set(["math", "cs", "cyber", "pet", "gym", "leet"]);
   const expandable = new Set(["math", "cs", "cyber", "pet", "gym", "leet", "review"]);
+  const labLive = Lab.labConfigured() && Lab.isLive();
   return day.blocks.map((b, i) => {
     const done = !!rec.blocks[b.id];
+    // Desk work gets an explicit marching order rather than a link into a phone-sized reader.
+    const desk = DESK_BLOCKS.has(b.id) && !b.free && !done
+      ? `<div class="small" style="color:var(--acc); margin-top:4px">🖥 Do this in <b>LockIn Lab</b> on your desktop${
+          labLive ? " — it's running now" : " — open it first"}</div>`
+      : "";
     const c = CAT[b.cat] || CAT.free;
     const u = unitByBlock[i]; // { id, fixed, first, last }
     const canFocus = !b.free && !done && focusable.has(b.cat);
@@ -352,6 +415,7 @@ function blocksHTML(day, rec, nowI, unitByBlock) {
         <div class="body">
           <div class="t">${esc(b.title)}</div>
           ${b.sub ? `<div class="s">${esc(b.sub)}</div>` : ""}
+          ${desk}
           ${(canFocus || canExpand) ? `<div class="row" style="gap:6px; margin-top:7px">
             ${canFocus ? `<button class="btn sm" data-focus="${b.id}|${i}">🔒 Focus</button>` : ""}
             ${canExpand ? `<button class="btn sm ghost" data-expand="${b.id}|${i}">🤖 Expand</button>` : ""}
@@ -514,6 +578,7 @@ export default {
         ${anyMovable ? `<button class="btn sm ghost" id="ai-plan" style="flex:1">🤖 Plan my day</button>` : ""}
         <button class="btn sm ghost" id="preview-day" style="flex:1">📅 Preview any day</button>
       </div>
+      ${commanderCard()}
       ${resetBanner}
       ${catchUpBanner}
       ${anyMovable && hasCustomOrder(key) ? `

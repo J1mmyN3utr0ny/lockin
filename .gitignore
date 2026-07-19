@@ -1,7 +1,8 @@
 # Runtime state — personal progress, and can hold your Gemini API key. NEVER publish this.
-Lab/lab_state.json
-Lab/app_state.json
-Lab/gymmy_state.json
+# The wildcard also covers backups of these files (e.g. app_state.json.poisoned.bak).
+Lab/lab_state.json*
+Lab/app_state.json*
+Lab/gymmy_state.json*
 
 # Personal / school material — kept local, NEVER published to the public repo.
 Prev projects/

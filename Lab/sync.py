@@ -7,6 +7,7 @@ import os
 import queue
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_PORT = 8765
@@ -27,6 +28,35 @@ def _broadcast(event, data):
             q.put_nowait((event, data))
         except Exception:
             pass
+
+
+CLOCK_SKEW_MS = 5 * 60 * 1000  # tolerate honest drift between the phone and this PC
+
+
+def sanitize_clock(state):
+    """Clamp a state blob's updatedAt to 'now' if it claims to be from the future.
+
+    updatedAt drives last-write-wins sync. A future timestamp is poison: it beats every real
+    edit forever, so every device adopts the blob carrying it, and a genuine edit afterwards
+    LOWERS the clock (to the true now) — which the phone's push guard reads as "nothing new",
+    so the edit never gets sent. A hand-injected 9999999999999 sitting in app_state.json is
+    exactly how phone->desktop sync went silently dead. The hub refuses to relay one.
+
+    An impossible clock is demoted to 0, NOT clamped to now: we don't know when that blob was
+    really written, and calling it "now" would promote a stale snapshot to newest-in-the-system,
+    upgrading a stuck sync into real data loss. 0 makes it lose every comparison instead — safe,
+    because the app merges day ticks independently of the clock.
+    """
+    if not isinstance(state, dict):
+        return state
+    now = int(time.time() * 1000)
+    try:
+        ts = float(state.get("updatedAt"))
+    except (TypeError, ValueError):
+        ts = 0
+    if not (0 < ts <= now + CLOCK_SKEW_MS):
+        state["updatedAt"] = 0
+    return state
 
 
 def _wake_for(d):
@@ -157,7 +187,7 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", 0) or 0)
                 raw = self.rfile.read(length) if length else b"{}"
-                data = json.loads(raw.decode("utf-8"))
+                data = sanitize_clock(json.loads(raw.decode("utf-8")))
                 _Handler.app_state = data
                 try:
                     with open(_Handler.state_path, "w", encoding="utf-8") as f:
@@ -206,7 +236,7 @@ class SyncServer:
         _Handler.state_path = app_state_path
         try:
             with open(app_state_path, encoding="utf-8") as f:
-                _Handler.app_state = json.load(f)  # survive a Lab restart
+                _Handler.app_state = sanitize_clock(json.load(f))  # survive a Lab restart
         except Exception:
             _Handler.app_state = {}
         try:

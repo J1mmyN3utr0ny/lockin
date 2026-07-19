@@ -38,7 +38,11 @@ function group(id, label, ico, subs) {
 }
 
 const bodyTab = group("body", "Body", "💪", [physique, diet, sleep]);
-const learnTab = group("learn", "Learn", "🧠", [lessons, cyber, csmentor, projects, mathmod, pet]);
+// Learn opens on the TRACKS view (which leads with the Lab's live status), not on the phone's
+// lesson reader. The phone commands the schedule and reports on the Lab; the real studying —
+// full lessons, code, LeetCode — happens in LockIn Lab on the desktop. The reader stays one
+// tap away for when he's away from his desk, just not the first thing he lands on.
+const learnTab = group("learn", "Learn", "🧠", [cyber, lessons, csmentor, projects, mathmod, pet]);
 const TABS = [today, bodyTab, learnTab, progress];
 const ALL = { today, body: bodyTab, learn: learnTab, progress, testmode, review, physique, diet, sleep, cyber, lessons, csmentor, projects, math: mathmod, pet };
 

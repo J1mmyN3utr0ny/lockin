@@ -1201,21 +1201,39 @@ TELLS = {
 }
 
 
+QUIZBANK_TRACKS = ("python", "csharp", "c", "asm", "linux", "cmd", "cyber_high", "cyber_low", "dsa")
+
+
+def extra_quiz_bank():
+    """The per-track deep question banks (quizbank_<track>.py), keyed by lesson id.
+    These are appended AFTER the original four checks, taking each lesson to ten graded
+    questions that ladder from applying the idea up to a hard transfer/edge case."""
+    bank = {}
+    for t in QUIZBANK_TRACKS:
+        try:
+            mod = __import__("quizbank_" + t)
+            bank.update(getattr(mod, "EXTRA_QUIZ", {}) or {})
+        except Exception:
+            pass  # a missing or broken bank must never take the Lab down
+    return bank
+
+
 def build_courses():
     """Base tracks (courses.json) + extra lessons + the DSA track, as an ordered dict.
     Attaches retrieval-practice quizzes (to lessons without one) plus a code-reading question and
-    a predict/spot-the-bug practice question to every lesson, an engaging hook to cyber lessons,
-    and a LeetCode 'tell' to DSA lessons."""
+    a predict/spot-the-bug practice question to every lesson, then the deep per-track question
+    bank, an engaging hook to cyber lessons, and a LeetCode 'tell' to DSA lessons."""
     courses = json.load(open(COURSES_JSON, encoding="utf-8"))
     for tid, extra in EXTRA_LESSONS.items():
         if tid in courses:
             courses[tid]["lessons"].extend(extra)
     courses["dsa"] = DSA_COURSE
+    deep_bank = extra_quiz_bank()
     for course in courses.values():
         for L in course.get("lessons", []):
             if not L.get("quiz") and L["id"] in QUIZZES:
                 L["quiz"] = QUIZZES[L["id"]]
-            for extra_bank in (CODE_QUIZZES, PRACTICE_QUIZZES):
+            for extra_bank in (CODE_QUIZZES, PRACTICE_QUIZZES, deep_bank):
                 extra_qs = extra_bank.get(L["id"])
                 if extra_qs:
                     L["quiz"] = (L.get("quiz") or []) + extra_qs
