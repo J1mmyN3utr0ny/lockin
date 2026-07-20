@@ -15,7 +15,7 @@ export function openOffDayFlow(dateKey = S.todayKey()) {
       body: "Give the token back and return to your normal routine for today.",
       yes: "Give token back", no: "Keep resting",
       onYes: () => {
-        S.update((st) => { st.offDays.spent = st.offDays.spent.filter((k) => k !== dateKey); });
+        S.setOffDay(dateKey, false); // stamped so the cancel syncs to the other device
         toast("Off-day cancelled — token returned"); refresh();
       }
     });
@@ -36,7 +36,7 @@ export function openOffDayFlow(dateKey = S.todayKey()) {
     no: "Not today",
     body: `This uses <b>1 of your ${left} remaining</b> off-days for the <b>whole summer</b>. A real, guilt-free break — your streak is safe. But once it's gone, it's gone. Waste it only if you truly need it.`,
     onYes: () => {
-      S.update((st) => { if (!st.offDays.spent.includes(dateKey)) st.offDays.spent.push(dateKey); });
+      S.setOffDay(dateKey, true); // stamped so taking an off-day on the phone shows on the desktop
       closeModal();
       toast("Off-day taken. Rest well. 🌙");
       refresh();

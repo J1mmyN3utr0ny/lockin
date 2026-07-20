@@ -57,7 +57,7 @@ function renderTabbar(activeId) {
 
 function renderTopbar() {
   const mode = S.appMode();
-  const dLeft = S.daysToSummerEnd();
+  const dLeft = S.daysToCountdown();
   const el = $("#topbar-right");
   const streak = S.computeStreak();
   const lp = S.levelProgress(S.getState().xp || 0);
@@ -66,7 +66,7 @@ function renderTopbar() {
     ${streak > 0 ? `<span class="pill gold">🔥 ${streak}</span>` : ""}
     ${mode === "test"
       ? `<span class="pill accent">Proving Grounds</span>`
-      : `<span class="pill">${dLeft >= 0 ? dLeft + "d to Sep 30" : "summer over"}</span>`}
+      : `<span class="pill">${dLeft > 0 ? dLeft + "d to Sep 1" : dLeft === 0 ? "Sep 1 — today" : "past Sep 1"}</span>`}
     <button class="btn sm ghost" id="gear" aria-label="settings">⚙</button>`;
   $("#gear").addEventListener("click", openSettings);
 }

@@ -90,8 +90,9 @@ expected here.
 He is actively building the project/exercise described in the context below. CURRENT EDITOR CODE is
 given in the user message. Reply in exactly these four short sections:
 1. WHERE YOU ARE: one line placing him in the build, based on his current code vs. the requirements.
-2. NEXT STEP: the single next concrete step. Give the exact code lines to add/change (as a fenced
-   snippet) or the exact terminal command to run — real syntax, real names, never pseudocode.
+2. NEXT STEP: the single next concrete step. Give the exact code lines to add/change (as plain text
+   indented 4 spaces, NOT fenced) or the exact terminal command to run — real syntax, real names,
+   never pseudocode.
 3. WHY THIS WORKS: 1-3 lines on why this step is correct/needed.
 4. BEFORE YOU MOVE ON: what to check/run/test to confirm this step worked before continuing.
 Stay under ~350 words. Give ONE complete, copy-pasteable step at a time — do not dump the rest of
@@ -208,6 +209,27 @@ EXPLAIN_GRADER_SYS = JSON_RULES + (
 )
 
 
+# ---------------------------------------------------------------------------
+# Output STYLE — appended to every chat mode so the tutor's replies read like the Lab's own
+# lessons and render correctly in the lesson pane (a plain-text Tk widget, NOT a markdown view).
+# The lessons are plain prose under short ALL-CAPS headings, with code shown as indented plain
+# text — never fenced. Matching that is what the student asked for.
+# ---------------------------------------------------------------------------
+LESSON_STYLE = """\
+OUTPUT STYLE — match the Lab's lessons exactly (this is rendered as PLAIN TEXT, not markdown):
+- Write in the lessons' voice: calm, concrete, mechanism-first. Teach WHY, not just what.
+- Organise longer replies under short ALL-CAPS headings on their own line (e.g. "THE IDEA",
+  "MECHANISM", "WORKED EXAMPLE", "WATCH OUT", "TRY THIS") — the same device the lessons use.
+- NO MARKDOWN. Do not use ``` code fences, #, *, **bold**, backticks, tables, or "- " bullets.
+  These render as literal junk characters in the lesson pane.
+- Show code or commands as PLAIN TEXT indented by 4 spaces per level (never fenced, never inline
+  in backticks). Real syntax, real names, real output — no pseudocode.
+- Where a mode limits you to a short illustrative snippet, keep that rule; just format it as
+  4-space-indented plain text.
+- Keep the concrete callout of the common WRONG assumption where it helps, exactly as the lessons do.
+"""
+
+
 def system_for(mode: str, context: str = "") -> str:
     mode_block = {
         "hint": HINT,
@@ -218,7 +240,7 @@ def system_for(mode: str, context: str = "") -> str:
         "problem_explainer": PROBLEM_EXPLAINER,
     }.get(mode, ASK)
     ctx = f"\n\nCURRENT LESSON CONTEXT (what he is working on right now):\n{context}\n" if context else ""
-    return f"{PERSONA}\n{mode_block}{ctx}"
+    return f"{PERSONA}\n{mode_block}\n{LESSON_STYLE}{ctx}"
 
 
 def context_from_lesson(track_title: str, lesson: dict) -> str:

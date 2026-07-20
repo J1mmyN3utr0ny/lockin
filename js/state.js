@@ -3,6 +3,7 @@
 export const KEY = "lockin.state.v1";
 export const PROGRAM_START = "2026-07-14"; // the whole program is anchored here (a Tuesday)
 export const SUMMER_END = "2026-09-30"; // extended: build through the capstone, then -> Test Mode
+export const COUNTDOWN_TARGET = "2026-09-01"; // the date the top-bar countdown pill counts down to
 export const COURSE_START = "2026-07-14"; // PET course runs Sun & Wed 09:00-14:00 (first one Wed Jul 15)
 export const EXAM_DATE = "2026-09-03"; // PET exam (Sep 2-3; anchored to the later day). Course ends here.
 export const PROJECT_START = "2026-09-05"; // the capstone kicks off 2 days after the exam
@@ -50,6 +51,8 @@ function defaults() {
     days: {}, // days[key] = { blocks:{id:true}, offDay:false, note:"" }
     tickAt: {}, // tickAt[key][blockId] = ms the tick was last toggled — lets sync merge ticks
                 // per-checkbox instead of letting one device's whole-state push erase the other's.
+                // The pseudo-id "__off" stamps off-day toggles so those merge the same way.
+    _syncSeed: 0, // one-time cross-device reconcile marker (see SYNC_SEED / seedOnce in lab.js)
     dayOrders: {}, // dayOrders[key] = [movable unit ids in the user's chosen day order]
     dayTweaks: {}, // dayTweaks[key] = { shift: mins, skip: [unit ids] } — AI/day adjustments
     customLessons: [], // AI-generated Learn-hub lessons (see modules/lesson_gen.js)
@@ -179,16 +182,35 @@ export function applyRemote(remote) {
   const keepKey2 = state.settings.geminiKey2;
   const keepLab = state.lab;
   const keepXp = state.xp || 0;
+  const keepSeed = state._syncSeed || 0; // the one-time reconcile marker is per-device, never adopted
+  const keepProfile = state.profile;
+  const keepWeights = (state.body && state.body.weights) || {};
   if (newer) {
     state = deepMerge(defaults(), remote);
     state.settings.labUrl = keepLabUrl;
-    state.settings.geminiKey = state.settings.geminiKey || keepKey;
-    state.settings.geminiKey2 = state.settings.geminiKey2 || keepKey2;
     state.lab = keepLab;
   }
+  // Keys, name, and the weight log sync BOTH ways (single user, one set of data everywhere), not
+  // only on the newer path: adopt any non-empty remote value we're missing so a key pasted or a
+  // weight logged on one device reaches the other even when neither state is strictly newer.
+  const rs = remote.settings || {}, rp = remote.profile || {};
+  state.settings.geminiKey = (newer ? state.settings.geminiKey : keepKey) || rs.geminiKey || keepKey || "";
+  state.settings.geminiKey2 = (newer ? state.settings.geminiKey2 : keepKey2) || rs.geminiKey2 || keepKey2 || "";
+  if (!newer) {
+    state.profile = keepProfile;
+    if (!state.profile.name && rp.name) state.profile.name = rp.name;
+    if (rp.bodyweightKg && (!state.profile.bodyweightKg || remoteTs >= (state.updatedAt || 0)))
+      state.profile.bodyweightKg = rp.bodyweightKg;
+  }
+  state.body = state.body || { weights: {} };
+  state.body.weights = { ...((remote.body && remote.body.weights) || {}), ...keepWeights }; // local wins ties
   state.days = merged.days;
   state.tickAt = merged.tickAt;
+  // off-days follow the merged day flags on BOTH devices, so a token spent anywhere shows everywhere.
+  state.offDays = state.offDays || { spent: [] };
+  state.offDays.spent = Object.keys(merged.days).filter((k) => merged.days[k].offDay).sort();
   state.xp = Math.max(keepXp, Number(remote.xp) || 0);
+  state._syncSeed = keepSeed;
   // If we folded in ticks the hub hasn't seen, we are now the newest copy and must push the union
   // back. The stamp has to BEAT the blob we just merged, not merely be "now": if the other device's
   // clock runs even slightly ahead of ours, a plain Date.now() lands behind it and lab.js's push
@@ -201,6 +223,37 @@ export function applyRemote(remote) {
 }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 export function emit() { listeners.forEach((fn) => fn(state)); }
+
+// ---- one-time cross-device reconcile --------------------------------------------------------
+// The phone and desktop drifted apart before per-field sync existed. To let the desktop CATCH UP,
+// the richer device (the phone, which holds the real progress) wins one reconcile: it stamps its
+// state fresh and pushes authoritatively; the other device adopts it. After that, ongoing sync is
+// fully bidirectional. Bump SYNC_SEED to trigger another reconcile in the future.
+export const SYNC_SEED = 1;
+export function seedDone() { return (state._syncSeed || 0) >= SYNC_SEED; }
+// How much real progress a state holds — the tiebreak for who wins the one-time reconcile.
+export function richness(s = state) {
+  if (!s || typeof s !== "object") return -1;
+  const onboarded = s.settings && s.settings.onboarded ? 5 : 0;
+  const xp = Number(s.xp) > 0 ? 3 : 0;
+  const days = Object.keys(s.days || {}).length;
+  const off = ((s.offDays && s.offDays.spent) || []).length;
+  const name = s.profile && s.profile.name ? 1 : 0;
+  return onboarded + xp + days + off + name;
+}
+// This device is authoritative: keep our data, stamp it fresh so our push is newest, mark seeded.
+export function seedAsAuthority() {
+  state._syncSeed = SYNC_SEED;
+  state.updatedAt = Date.now();
+  save();
+  emit();
+}
+// This device just records that the reconcile happened (no push) — used by the device that will
+// instead ADOPT the authoritative copy through the normal pull/stream.
+export function markSeeded() {
+  state._syncSeed = SYNC_SEED;
+  save();
+}
 
 export function resetAll() {
   state = defaults();
@@ -260,6 +313,7 @@ export function appMode() {
   return daysBetween(SUMMER_END, todayKey()) >= 0 ? "test" : "summer";
 }
 export function daysToSummerEnd() { return daysBetween(todayKey(), SUMMER_END); }
+export function daysToCountdown() { return daysBetween(todayKey(), COUNTDOWN_TARGET); }
 
 // Off-day tokens
 export function offDaysLeft() { return OFFDAY_TOKENS - state.offDays.spent.length; }
@@ -281,16 +335,33 @@ export function dayRec(key) {
 
 // Tick a block on/off AND stamp when it happened. The stamp is what lets two devices merge
 // their checkboxes (see mergeDays) instead of the newer whole-state blob silently winning.
-const TICK_KEEP_DAYS = 21;
+const TICK_KEEP_DAYS = 400; // keep stamps long enough that off-days months back still sync
+function _stamp(st, dateKey, id) {
+  if (!st.tickAt) st.tickAt = {};
+  (st.tickAt[dateKey] = st.tickAt[dateKey] || {})[id] = Date.now();
+  const cutoff = addDays(todayKey(), -TICK_KEEP_DAYS);
+  for (const k of Object.keys(st.tickAt)) {
+    if (k < cutoff) delete st.tickAt[k]; // ISO keys sort lexicographically = chronologically
+  }
+}
 export function setBlock(dateKey, id, on) {
   update((st) => {
     dayRec(dateKey).blocks[id] = on;
-    if (!st.tickAt) st.tickAt = {};
-    (st.tickAt[dateKey] = st.tickAt[dateKey] || {})[id] = Date.now();
-    const cutoff = addDays(todayKey(), -TICK_KEEP_DAYS);
-    for (const k of Object.keys(st.tickAt)) {
-      if (k < cutoff) delete st.tickAt[k]; // ISO keys sort lexicographically = chronologically
-    }
+    _stamp(st, dateKey, id);
+  });
+}
+
+// Take/cancel an off-day WITH a timestamp, so it merges across devices exactly like a tick.
+// offDays.spent is kept as the fast lookup, but the merge is driven by days[key].offDay + the
+// "__off" stamp so taking an off-day on the phone reliably shows up on the desktop (and vice versa).
+export function setOffDay(dateKey, on) {
+  update((st) => {
+    dayRec(dateKey).offDay = !!on;
+    if (!st.offDays) st.offDays = { spent: [] };
+    const set = new Set(st.offDays.spent);
+    if (on) set.add(dateKey); else set.delete(dateKey);
+    st.offDays.spent = [...set].sort();
+    _stamp(st, dateKey, "__off");
   });
 }
 
@@ -316,9 +387,13 @@ function mergeDays(local, remote) {
       const ts = Math.max(lTs, rTs);
       if (ts) ticks[id] = ts;
     }
-    const offDay = !!(lRec && lRec.offDay) || !!(rRec && rRec.offDay); // spending a token is a fact too
+    // off-day resolves by its "__off" stamp like a tick; with no stamp, a spent token wins (a fact).
+    const lOff = !!(lRec && lRec.offDay), rOff = !!(rRec && rRec.offDay);
+    const lOffTs = (lT[d] || {})["__off"] || 0, rOffTs = (rT[d] || {})["__off"] || 0;
+    const offDay = (lOffTs || rOffTs) ? (lOffTs >= rOffTs ? lOff : rOff) : (lOff || rOff);
+    if (lOffTs || rOffTs) ticks["__off"] = Math.max(lOffTs, rOffTs);
     days[d] = { blocks, offDay, note: (rRec && rRec.note) || (lRec && lRec.note) || "" };
-    if (!rRec || offDay !== !!(rRec && rRec.offDay)) changed = true;
+    if (!rRec || offDay !== rOff) changed = true;
     if (Object.keys(ticks).length) tickAt[d] = ticks;
   }
   return { days, tickAt, changed };

@@ -418,6 +418,10 @@ class Lab(tk.Tk):
         w.tag_configure("b", foreground=C["fg"], spacing3=5)
         w.tag_configure("task", foreground=C["gold"], spacing1=6, spacing3=6, lmargin1=6, lmargin2=6)
         w.tag_configure("code", foreground="#a7f3d0", font=MONOS, background=C["editor"], lmargin1=12, lmargin2=12, spacing1=3, spacing3=5)
+        # leading-indent dots: same mono font/background as code so they line up, but a faint colour
+        # so the "····" reads as a whitespace ruler rather than competing with the code itself.
+        w.tag_configure("codedots", foreground=C["gutterfg"], font=MONOS, background=C["editor"])
+        w.tag_configure("bdots", foreground=C["gutterfg"], font=MONOS)
         w.tag_configure("dim", foreground=C["dim"])
         w.tag_configure("good", foreground=C["good"])
         w.tag_configure("user", foreground=C["acc"], font=UIB)
@@ -529,6 +533,22 @@ class Lab(tk.Tk):
         render(self.lesson_txt)
         self.lesson_txt.configure(state="disabled")
 
+    # Middle dot used to mark indentation (four dots per 4-space level, as the student asked).
+    DOT = "·"
+
+    def _ins_code(self, w, text, tag="code"):
+        """Insert code/command text, rendering each leading space as a faint dot so indentation is
+        visible — four dots per 4-space level. The dots use a companion dim tag; the rest of the
+        line keeps the given tag. Used for every code/body block in lessons and AI replies."""
+        dot_tag = "codedots" if tag == "code" else "bdots"
+        for i, line in enumerate(text.split("\n")):
+            if i:
+                w.insert("end", "\n", tag)
+            n = len(line) - len(line.lstrip(" "))
+            if n:
+                w.insert("end", self.DOT * n, dot_tag)
+            w.insert("end", line[n:], tag)
+
     def _set_test_btn(self, **kw):
         # theory app has no Run Tests button — quietly ignore the code-mode calls.
         if self.test_btn is not None:
@@ -574,9 +594,9 @@ class Lab(tk.Tk):
             for sec in L.get("read", []):
                 w.insert("end", sec.get("h", "") + "\n", "h")
                 if sec.get("p"):
-                    w.insert("end", sec["p"] + "\n", "b")
+                    self._ins_code(w, sec["p"] + "\n", "b")
                 if sec.get("code"):
-                    w.insert("end", sec["code"] + "\n", "code")
+                    self._ins_code(w, sec["code"] + "\n", "code")
             # The real lesson: several thousand words per topic (depth_<track>.py). The original
             # `read` sections above are the summary; this is the part you actually study from.
             dp = depth.for_lesson(L["id"], L["title"])
@@ -586,7 +606,7 @@ class Lab(tk.Tk):
                     if sec.get("h"):
                         w.insert("end", "\n" + sec["h"] + "\n", "hooklbl")
                     if sec.get("body"):
-                        w.insert("end", sec["body"] + "\n", "b")
+                        self._ins_code(w, sec["body"] + "\n", "b")
             exp = expansions.for_lesson(tid, idx, L["title"])
             if exp:
                 w.insert("end", "\n🔎  DEEP DIVE — beyond the lesson\n", "h")
@@ -594,7 +614,7 @@ class Lab(tk.Tk):
                     if sec.get("h"):
                         w.insert("end", sec["h"] + "\n", "hooklbl")
                     if sec.get("body"):
-                        w.insert("end", sec["body"] + "\n", "b")
+                        self._ins_code(w, sec["body"] + "\n", "b")
                 links = exp.get("links") or []
                 if links:
                     w.insert("end", "Further reading: ", "dim")
@@ -637,7 +657,7 @@ class Lab(tk.Tk):
                     solved_q = bool(checks.get(str(qi)))
                     w.insert("end", "\n%d. %s\n" % (qi + 1, q["q"]), "b")
                     if q.get("code"):  # a "what does this do?" snippet to read before choosing
-                        w.insert("end", q["code"] + "\n", "code")
+                        self._ins_code(w, q["code"] + "\n", "code")
                     for oi, opt in enumerate(q["options"]):
                         correct = (oi == q["answer"])
                         if solved_q and correct:
@@ -1049,14 +1069,14 @@ class Lab(tk.Tk):
         idx = self.tutor_txt.search("thinking…", "end-2l", backwards=True)
         if idx:
             self.tutor_txt.delete(idx + " linestart", "end")
-        self.tutor_txt.insert("end", out + "\n")
+        self._ins_code(self.tutor_txt, out + "\n", "b")  # AI replies use the lesson code/indent style
         self.tutor_txt.see("end")
         self.tutor_txt.configure(state="disabled")
 
     def _tutor(self, who, text, tag="b"):
         self.tutor_txt.configure(state="normal")
         self.tutor_txt.insert("end", "\n%s\n" % who, "user" if who == "You" else "h")
-        self.tutor_txt.insert("end", text + "\n", tag)
+        self._ins_code(self.tutor_txt, text + "\n", tag)  # indentation shown as dots, like the lessons
         self.tutor_txt.see("end")
         self.tutor_txt.configure(state="disabled")
 
@@ -1354,7 +1374,7 @@ class Lab(tk.Tk):
                 w.insert("end", stored["title"] + "\n\n", "h")
                 for sec in stored["sections"]:
                     w.insert("end", sec["h"] + "\n", "h")
-                    w.insert("end", sec["body"] + "\n\n", "b")
+                    self._ins_code(w, sec["body"] + "\n\n", "b")
                 w.insert("end", "✅  QUICK CHECK — answer, then reveal\n", "h")
                 for qi, q in enumerate(stored["quiz"]):
                     w.insert("end", "\n%d. %s\n" % (qi + 1, q["q"]), "b")

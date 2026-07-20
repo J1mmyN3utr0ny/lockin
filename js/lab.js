@@ -111,11 +111,34 @@ function canPush() {
   return st.settings.onboarded || (st.xp || 0) > 0;
 }
 
+// The one-time reconcile: the richer device (the phone) wins, pushing its data authoritatively so
+// the desktop can catch up; the poorer device adopts the hub copy. Runs at most once per SYNC_SEED,
+// before normal syncing takes over. Returns true if it handled the seed this call.
+async function seedOnce() {
+  if (S.seedDone() || !labConfigured()) return false;
+  const res = await labFetch("/appstate", {});
+  let remote = null;
+  if (res && res.ok) { try { remote = await res.json(); } catch (_e) { remote = null; } }
+  // Can't reach the hub yet — leave the seed unmarked and try again next cycle.
+  if (remote === null && !(res && res.ok)) return false;
+  const mine = S.richness();
+  const theirs = remote && remote.version !== undefined ? S.richness(remote) : -1;
+  if (mine >= theirs) {
+    S.seedAsAuthority();          // I'm the phone (richer): stamp fresh + push over the hub
+    if (canPush()) { const ok = await pushState(); if (ok) _lastPushed = S.getState().updatedAt || 0; }
+  } else {
+    if (remote) _adopt(remote);   // the phone already seeded — adopt its authoritative copy
+    S.markSeeded();
+  }
+  return true;
+}
+
 // One cycle: fold the hub's copy into ours, then push the result back so the hub ends up holding
 // the union. Pushing after a pull is what makes ticks propagate both ways in a single round.
-// Returns "merged"/"pulled"/"pushed"/"".
+// Returns "seeded"/"merged"/"pulled"/"pushed"/"".
 export async function syncState() {
   if (!labConfigured()) return "";
+  if (!S.seedDone()) { const did = await seedOnce(); if (did) return "seeded"; }
   const adopted = await pullState();
   if (!canPush()) return adopted ? "pulled" : "";
   const pushed = await pushState();
@@ -248,6 +271,13 @@ export function startAppSync() {
   _started = true;
   _openStream();
   setInterval(_openStream, 4000); // (re)connect when the Lab URL is set/changed or the stream drops
+  // Drive the one-time reconcile as soon as the hub is reachable, retrying until it lands. The
+  // richest device (the phone) wins and pushes its data; the desktop then catches up via the stream.
+  const trySeed = () => {
+    if (S.seedDone()) return;
+    seedOnce().catch(() => {}).finally(() => { if (!S.seedDone()) setTimeout(trySeed, 5000); });
+  };
+  if (!S.seedDone()) setTimeout(trySeed, 1500);
   // push local edits the instant they land (tiny debounce to coalesce rapid changes)
   let pushT = null;
   S.subscribe(() => {
